@@ -1,5 +1,41 @@
 # PyTracking
 
+## Instructions for running the XDiMP models
+
+To run the Super XDiMP model on a dataset:
+```bash
+python run_tracker.py dimp_summary super_dimp_15 --dataset_name dataset_name --sequence sequence --debug debug --threads threads
+```  
+
+To run the Super XDiMP model on the Fish dataset prepared by Vv:
+
+```bash
+python run_tracker.py dimp_summary super_dimp_15 --dataset_name 'fish' 
+```  
+
+To run the tracker interactively with a dataset:
+
+```bash
+python run_tracker.py dimp_summary super_dimp_15_interactive --dataset_name 'fish' 
+```  
+
+To run the RLT-xDiMP model:
+
+```bash
+python run_tracker.py RLT_XDiMP new --dataset_name 'fish' 
+```  
+
+Just running the trackers on a dataset does not store the results. To store the results and evaluate tracker performance, run an experiment. Go to pytracking/experiments/my_experiments.py to view experiments and create one by specifying which trackers to run on which datasets. 
+
+
+```bash
+python run_experiment.py my_experiments experiment_name
+```  
+
+
+
+
+
 A general python library for visual tracking algorithms. 
 ## Table of Contents
 
