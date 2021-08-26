@@ -32,11 +32,12 @@ Just running the trackers on a dataset does not store the results. To store the 
 python run_experiment.py my_experiments experiment_name
 ```  
 
+To analyze results head to pytracking/notebooks and look at analyze_results.ipynb and play_results.py. 
+
+To change things such as summary set size and update strategy, edit the files in pytracker/parameters 
 
 
 
-
-A general python library for visual tracking algorithms. 
 ## Table of Contents
 
 * [Running a tracker](#running-a-tracker)
