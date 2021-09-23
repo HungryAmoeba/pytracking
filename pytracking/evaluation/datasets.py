@@ -13,6 +13,8 @@ dataset_dict = dict(
     tpl=DatasetInfo(module=pt % "tpl", class_name="TPLDataset", kwargs=dict()),
     tpl_nootb=DatasetInfo(module=pt % "tpl", class_name="TPLDataset", kwargs=dict(exclude_otb=True)),
     vot=DatasetInfo(module=pt % "vot", class_name="VOTDataset", kwargs=dict()),
+    vot_2020=DatasetInfo(module=pt % "vot_2020", class_name="VOT2020Dataset", kwargs=dict()),
+
     trackingnet=DatasetInfo(module=pt % "trackingnet", class_name="TrackingNetDataset", kwargs=dict()),
     fish=DatasetInfo(module=pt % "fish", class_name="FishDataset", kwargs=dict()),
     got10k_test=DatasetInfo(module=pt % "got10k", class_name="GOT10KDataset", kwargs=dict(split='test')),
