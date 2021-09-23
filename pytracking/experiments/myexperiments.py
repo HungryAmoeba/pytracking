@@ -196,6 +196,6 @@ def vot_summary_size_test():
                trackerlist('dimp_summary', 'super_dimp_25', range(1)) + \
                trackerlist('dimp_summary', 'super_dimp_30', range(1))
 
-    dataset = get_datset('vot_2020', 'vot')
+    dataset = get_dataset('vot_2020', 'vot')
 
     return trackers, dataset 
