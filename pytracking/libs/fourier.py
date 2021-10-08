@@ -5,13 +5,13 @@ from pytracking.libs.tensorlist import tensor_operation
 
 
 @tensor_operation
-def rfftshift2(a: torch.Tensor):
+def rfftshift2(a):
     h = a.shape[2] + 2
     return torch.cat((a[:,:,(h-1)//2:,...], a[:,:,:h//2,...]), 2)
 
 
 @tensor_operation
-def irfftshift2(a: torch.Tensor):
+def irfftshift2(a):
     mid = int((a.shape[2]-1)/2)
     return torch.cat((a[:,:,mid:,...], a[:,:,:mid,...]), 2)
 
@@ -32,7 +32,7 @@ def cifft2(a, signal_sizes=None):
 
 
 @tensor_operation
-def sample_fs(a: torch.Tensor, grid_sz: torch.Tensor = None, rescale = True):
+def sample_fs(a, grid_sz = None, rescale = True):
     """Samples the Fourier series."""
 
     # Size of the fourier series
@@ -75,7 +75,7 @@ def get_frequency_coord(sz, add_complex_dim = False, device='cpu'):
 
 
 @tensor_operation
-def shift_fs(a: torch.Tensor, shift: torch.Tensor):
+def shift_fs(a, shift):
     """Shift a sample a in the Fourier domain.
     Params:
         a : The fourier coefficiens of the sample.
@@ -92,7 +92,7 @@ def shift_fs(a: torch.Tensor, shift: torch.Tensor):
     return complex.mult(complex.mult(a, complex.exp_imag(shift[0].item()*ky)), complex.exp_imag(shift[1].item()*kx))
 
 
-def sum_fs(a: TensorList) -> torch.Tensor:
+def sum_fs(a):
     """Sum a list of Fourier series expansions."""
 
     s = None
@@ -114,7 +114,7 @@ def sum_fs(a: TensorList) -> torch.Tensor:
     return s
 
 
-def sum_fs12(a: TensorList) -> torch.Tensor:
+def sum_fs12(a):
     """Sum a list of Fourier series expansions."""
 
     s = None
@@ -137,10 +137,10 @@ def sum_fs12(a: TensorList) -> torch.Tensor:
 
 
 @tensor_operation
-def inner_prod_fs(a: torch.Tensor, b: torch.Tensor):
+def inner_prod_fs(a, b):
     if complex.is_complex(a) and complex.is_complex(b):
-        return 2 * (a.reshape(-1) @ b.reshape(-1)) - a[:, :, :, 0, :].reshape(-1) @ b[:, :, :, 0, :].reshape(-1)
+        return 2 * (torch.mm(a.reshape(-1), b.reshape(-1))) - torch.mm(a[:, :, :, 0, :].reshape(-1), b[:, :, :, 0, :].reshape(-1))
     elif complex.is_real(a) and complex.is_real(b):
-        return 2 * (a.reshape(-1) @ b.reshape(-1)) - a[:, :, :, 0].reshape(-1) @ b[:, :, :, 0].reshape(-1)
+        return 2 * (torch.mm(a.reshape(-1), b.reshape(-1))) - torch.mm(a[:, :, :, 0].reshape(-1), b[:, :, :, 0].reshape(-1))
     else:
         raise NotImplementedError('Not implemented for mixed real and complex.')

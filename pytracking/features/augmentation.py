@@ -51,7 +51,7 @@ class FlipHorizontal(Transform):
 
 class FlipVertical(Transform):
     """Flip along vertical axis."""
-    def __call__(self, image: torch.Tensor, is_mask=False):
+    def __call__(self, image, is_mask=False):
         if isinstance(image, torch.Tensor):
             return self.crop_to_output(image.flip((2,)))
         else:
@@ -121,7 +121,7 @@ class Rotate(Transform):
             c = (np.expand_dims(np.array(image.shape[:2]),1)-1)/2
             R = np.array([[math.cos(self.angle), math.sin(self.angle)],
                           [-math.sin(self.angle), math.cos(self.angle)]])
-            H =np.concatenate([R, c - R @ c], 1)
+            H =np.concatenate([R, c - torch.mm(R, c)], 1)
             return cv.warpAffine(image, H, image.shape[1::-1], borderMode=cv.BORDER_REPLICATE)
 
 
@@ -200,8 +200,9 @@ class RandomAffine(Transform):
                             [0.0, scale_factors[1], (1.0 - scale_factors[1]) * 0.5 * im_h],
                             [0.0, 0.0, 1.0]])
 
-        t_mat = t_scale @ t_rot @ t_shear @ t_mat
-
+        #t_mat = t_scale @ t_rot @ t_shear @ t_mat
+        t_mat = torch.mm(t_scale, torch.mm(t_rot, torch.mm(t_shear, t_mat)))
+        
         t_mat[0, 2] += self.pad_amount
         t_mat[1, 2] += self.pad_amount
 

@@ -52,7 +52,7 @@ class MultiObjectWrapper:
             obj_info['init_other'] = init_other
         return info_split
 
-    def _set_defaults(self, tracker_out: dict, defaults=None):
+    def _set_defaults(self, tracker_out, defaults=None):
         defaults = {} if defaults is None else defaults
 
         for key, val in defaults.items():
@@ -74,7 +74,7 @@ class MultiObjectWrapper:
             segmentation_maps = [out.get('segmentation_soft', out['segmentation']) for out in out_all.values()]
             segmentation_maps = np.stack(segmentation_maps)
 
-            obj_ids = np.array([0, *map(int, out_all.keys())], dtype=np.uint8)
+            obj_ids = np.array([0] + map(int, out_all.keys()), dtype=np.uint8)
             segm_threshold = getattr(self.params, 'segmentation_threshold', 0.5)
             merged_segmentation = obj_ids[np.where(segmentation_maps.max(axis=0) > segm_threshold,
                                                    segmentation_maps.argmax(axis=0) + 1, 0)]
@@ -98,7 +98,7 @@ class MultiObjectWrapper:
 
         return out_merged
 
-    def initialize(self, image, info: dict) -> dict:
+    def initialize(self, image, info):
         self.initialized_ids = []
         self.trackers = OrderedDict()
 
@@ -132,7 +132,7 @@ class MultiObjectWrapper:
 
         return out_merged
 
-    def track(self, image, info: dict = None, manual_replace = None, return_summary_patches = False) -> dict:
+    def track(self, image, info = None, manual_replace = None, return_summary_patches = False):
         if info is None:
             info = {}
 
@@ -208,8 +208,8 @@ class MultiObjectWrapper:
         if isinstance(box, (OrderedDict, dict)):
             box = [v for k, v in box.items()]
         else:
-            box = (box,)
+            box = box
         if segmentation is None:
-            self.visdom.register((image, *box), 'Tracking', 1, 'Tracking')
+            self.visdom.register(tuple(image + box), 'Tracking', 1, 'Tracking')
         else:
-            self.visdom.register((image, *box, segmentation), 'Tracking', 1, 'Tracking')
+            self.visdom.register(tuple(image + box + segmentation), 'Tracking', 1, 'Tracking')

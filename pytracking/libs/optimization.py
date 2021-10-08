@@ -9,17 +9,17 @@ from ltr.models.layers.activation import softmax_reg
 class L2Problem:
     """Base class for representing an L2 optimization problem."""
 
-    def __call__(self, x: TensorList) -> TensorList:
+    def __call__(self, x):
         """Shall compute the residuals of the problem."""
         raise NotImplementedError
 
     def ip_input(self, a, b):
         """Inner product of the input space."""
-        return sum(a.view(-1) @ b.view(-1))
+        return sum(torch.mm(a.view(-1), b.view(-1)))
 
     def ip_output(self, a, b):
         """Inner product of the output space."""
-        return sum(a.view(-1) @ b.view(-1))
+        return sum(torch.mm(a.view(-1), b.view(-1)))
 
     def M1(self, x):
         """M1 preconditioner."""
@@ -31,13 +31,13 @@ class L2Problem:
 
 class MinimizationProblem:
     """General minimization problem."""
-    def __call__(self, x: TensorList) -> TensorList:
+    def __call__(self, x):
         """Shall compute the loss."""
         raise NotImplementedError
 
     def ip_input(self, a, b):
         """Inner product of the input space."""
-        return sum(a.view(-1) @ b.view(-1))
+        return sum(torch.mm(a.view(-1), b.view(-1)))
 
     def M1(self, x):
         return x
@@ -169,7 +169,7 @@ class ConjugateGradientBase:
 
     def ip(self, a, b):
         # Implements the inner product
-        return a.view(-1) @ b.view(-1)
+        return torch.mm(a.view(-1), b.view(-1))
 
     def residual_norm(self, r):
         res = self.ip(r, r).sum()
@@ -199,7 +199,7 @@ class ConjugateGradientBase:
 class ConjugateGradient(ConjugateGradientBase):
     """Conjugate Gradient optimizer, performing single linearization of the residuals in the start."""
 
-    def __init__(self, problem: L2Problem, variable: TensorList, cg_eps = 0.0, fletcher_reeves = True,
+    def __init__(self, problem, variable, cg_eps = 0.0, fletcher_reeves = True,
                  standard_alpha = True, direction_forget_factor = 0, debug = False, plotting = False, visdom=None):
         super().__init__(fletcher_reeves, standard_alpha, direction_forget_factor, debug or plotting)
 
@@ -293,7 +293,7 @@ class ConjugateGradient(ConjugateGradientBase):
 class GaussNewtonCG(ConjugateGradientBase):
     """Gauss-Newton with Conjugate Gradient optimizer."""
 
-    def __init__(self, problem: L2Problem, variable: TensorList, cg_eps = 0.0, fletcher_reeves = True,
+    def __init__(self, problem, variable, cg_eps = 0.0, fletcher_reeves = True,
                  standard_alpha = True, direction_forget_factor = 0, debug = False, analyze = False, plotting = False,
                  visdom=None):
         super().__init__(fletcher_reeves, standard_alpha, direction_forget_factor, debug or analyze or plotting)
@@ -432,13 +432,13 @@ class GaussNewtonCG(ConjugateGradientBase):
 
             # store in the vectors
             self.losses = torch.cat((self.losses, loss.detach().cpu().view(-1)))
-            self.gradient_mags = torch.cat((self.gradient_mags, sum(grad.view(-1) @ grad.view(-1)).cpu().sqrt().detach().view(-1)))
+            self.gradient_mags = torch.cat((self.gradient_mags, sum(torch.mm(grad.view(-1), grad.view(-1))).cpu().sqrt().detach().view(-1)))
 
 
 class GradientDescentL2:
     """Gradient descent with momentum for L2 problems."""
 
-    def __init__(self, problem: L2Problem, variable: TensorList, step_length: float, momentum: float = 0.0, debug = False, plotting = False, visdom=None):
+    def __init__(self, problem, variable, step_length, momentum = 0.0, debug = False, plotting = False, visdom=None):
 
         self.problem = problem
         self.x = variable
@@ -495,7 +495,7 @@ class GradientDescentL2:
 
             if self.debug:
                 lossvec[i] = loss.item()
-                grad_mags[i] = sum(grad.view(-1) @ grad.view(-1)).sqrt().item()
+                grad_mags[i] = sum(torch.mm(grad.view(-1), grad.view(-1))).sqrt().item()
 
         if self.debug:
             self.x.requires_grad_(True)
@@ -503,7 +503,7 @@ class GradientDescentL2:
             loss = self.problem.ip_output(self.f0, self.f0)
             grad = TensorList(torch.autograd.grad(loss, self.x))
             lossvec[-1] = self.problem.ip_output(self.f0, self.f0).item()
-            grad_mags[-1] = sum(grad.view(-1) @ grad.view(-1)).cpu().sqrt().item()
+            grad_mags[-1] = sum(torch.mm(grad.view(-1), grad.view(-1))).cpu().sqrt().item()
             self.losses = torch.cat((self.losses, lossvec))
             self.gradient_mags = torch.cat((self.gradient_mags, grad_mags))
 
@@ -522,7 +522,7 @@ class GradientDescentL2:
 class NewtonCG(ConjugateGradientBase):
     """Newton with Conjugate Gradient. Handels general minimization problems."""
 
-    def __init__(self, problem: MinimizationProblem, variable: TensorList, init_hessian_reg = 0.0, hessian_reg_factor = 1.0,
+    def __init__(self, problem, variable, init_hessian_reg = 0.0, hessian_reg_factor = 1.0,
                  cg_eps = 0.0, fletcher_reeves = True, standard_alpha = True, direction_forget_factor = 0,
                  debug = False, analyze = False, plotting = False, fig_num=(10, 11, 12)):
         super().__init__(fletcher_reeves, standard_alpha, direction_forget_factor, debug or analyze or plotting)
@@ -636,13 +636,13 @@ class NewtonCG(ConjugateGradientBase):
 
             # store in the vectors
             self.losses = torch.cat((self.losses, loss.detach().cpu().view(-1)))
-            self.gradient_mags = torch.cat((self.gradient_mags, sum(grad.view(-1) @ grad.view(-1)).cpu().sqrt().detach().view(-1)))
+            self.gradient_mags = torch.cat((self.gradient_mags, sum(torch.mm(grad.view(-1), grad.view(-1))).cpu().sqrt().detach().view(-1)))
 
 
 class GradientDescent:
     """Gradient descent for general minimization problems."""
 
-    def __init__(self, problem: MinimizationProblem, variable: TensorList, step_length: float, momentum: float = 0.0,
+    def __init__(self, problem, variable, step_length, momentum = 0.0,
                  debug = False, plotting = False, fig_num=(10,11)):
 
         self.problem = problem
@@ -696,14 +696,14 @@ class GradientDescent:
 
             if self.debug:
                 lossvec[i] = loss.item()
-                grad_mags[i] = sum(grad.view(-1) @ grad.view(-1)).sqrt().item()
+                grad_mags[i] = sum(torch.mm(grad.view(-1), grad.view(-1))).sqrt().item()
 
         if self.debug:
             self.x.requires_grad_(True)
             loss = self.problem(self.x)
             grad = TensorList(torch.autograd.grad(loss, self.x))
             lossvec[-1] = loss.item()
-            grad_mags[-1] = sum(grad.view(-1) @ grad.view(-1)).cpu().sqrt().item()
+            grad_mags[-1] = sum(torch.mm(grad.view(-1), grad.view(-1))).cpu().sqrt().item()
             self.losses = torch.cat((self.losses, lossvec))
             self.gradient_mags = torch.cat((self.gradient_mags, grad_mags))
             if self.plotting:

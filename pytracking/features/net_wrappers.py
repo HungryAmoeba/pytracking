@@ -2,7 +2,7 @@ import torch
 from pytracking.utils.loading import load_network
 
 
-class NetWrapper:
+class NetWrapper(object):
     """Used for wrapping networks in pytracking.
     Network modules and functions can be accessed directly as if they were members of this class."""
     _rec_iter=0
@@ -43,16 +43,16 @@ class NetWithBackbone(NetWrapper):
 
     def __init__(self, net_path, use_gpu=True, initialize=False, image_format='rgb',
                  mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), **kwargs):
-        super().__init__(net_path, use_gpu, initialize, **kwargs)
+        super(NetWithBackbone, self).__init__(net_path, use_gpu, initialize, **kwargs)
 
         self.image_format = image_format
         self._mean = torch.Tensor(mean).view(1, -1, 1, 1)
         self._std = torch.Tensor(std).view(1, -1, 1, 1)
 
     def initialize(self, image_format='rgb', mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
-        super().initialize()
+        super(NetWithBackbone, self).initialize()
 
-    def preprocess_image(self, im: torch.Tensor):
+    def preprocess_image(self, im):
         """Normalize the image with the mean and standard deviation used by the network."""
 
         if self.image_format in ['rgb', 'bgr']:
@@ -68,7 +68,7 @@ class NetWithBackbone(NetWrapper):
 
         return im
 
-    def extract_backbone(self, im: torch.Tensor):
+    def extract_backbone(self, im):
         """Extract backbone features from the network.
         Expects a float tensor image with pixel range [0, 255]."""
         im = self.preprocess_image(im)

@@ -10,7 +10,7 @@ def draw_figure(fig):
     plt.pause(0.001)
 
 
-def show_tensor(a: torch.Tensor, fig_num = None, title = None, range=(None, None), ax=None):
+def show_tensor(a, fig_num = None, title = None, range=(None, None), ax=None):
     """Display a 2D tensor.
     args:
         fig_num: Figure number.
@@ -40,7 +40,7 @@ def show_tensor(a: torch.Tensor, fig_num = None, title = None, range=(None, None
         draw_figure(plt.gcf())
 
 
-def plot_graph(a: torch.Tensor, fig_num = None, title = None):
+def plot_graph(a, fig_num = None, title = None):
     """Plot graph. Data is a 1D tensor.
     args:
         fig_num: Figure number.

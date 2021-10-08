@@ -3,11 +3,11 @@ import torch.nn.functional as F
 import numpy as np
 
 
-def numpy_to_torch(a: np.ndarray):
+def numpy_to_torch(a):
     return torch.from_numpy(a).float().permute(2, 0, 1).unsqueeze(0)
 
 
-def torch_to_numpy(a: torch.Tensor):
+def torch_to_numpy(a):
     return a.squeeze(0).permute(1,2,0).numpy()
 
 
@@ -30,7 +30,7 @@ def sample_patch_transformed(im, pos, scale, image_sz, transforms, is_mask=False
     return im_patches
 
 
-def sample_patch_multiscale(im, pos, scales, image_sz, mode: str='replicate', max_scale_change=None):
+def sample_patch_multiscale(im, pos, scales, image_sz, mode ='replicate', max_scale_change=None):
     """Extract image patches at multiple scales.
     args:
         im: Image.
@@ -52,8 +52,8 @@ def sample_patch_multiscale(im, pos, scales, image_sz, mode: str='replicate', ma
     return  im_patches, patch_coords
 
 
-def sample_patch(im: torch.Tensor, pos: torch.Tensor, sample_sz: torch.Tensor, output_sz: torch.Tensor = None,
-                 mode: str = 'replicate', max_scale_change=None, is_mask=False):
+def sample_patch(im, pos, sample_sz, output_sz = None,
+                 mode = 'replicate', max_scale_change=None, is_mask=False):
     """Sample an image patch.
 
     args:

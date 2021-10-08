@@ -44,7 +44,7 @@ dataset_dict = dict(
 )
 
 
-def load_dataset(name: str):
+def load_dataset(name):
     """ Import and load a single dataset."""
     name = name.lower()
     dset_info = dataset_dict.get(name)

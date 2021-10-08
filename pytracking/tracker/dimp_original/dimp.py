@@ -22,7 +22,7 @@ class DiMP(BaseTracker):
             self.params.net.initialize()
         self.features_initialized = True
 
-    def initialize(self, image, info: dict) -> dict:
+    def initialize(self, image, info):
         # Initialize some stuff
         self.frame_num = 1
         if not self.params.has('device'):
@@ -91,7 +91,7 @@ class DiMP(BaseTracker):
         return out
 
 
-    def track(self, image, manual_replace = -1, info: dict = None) -> dict:
+    def track(self, image, manual_replace = -1, info = None):
         self.debug_info = {}
 
         self.frame_num += 1
@@ -187,7 +187,7 @@ class DiMP(BaseTracker):
         return self.pos + ((self.feature_sz + self.kernel_size) % 2) * self.target_scale * \
                self.img_support_sz / (2*self.feature_sz)
 
-    def classify_target(self, sample_x: TensorList):
+    def classify_target(self, sample_x):
         """Classify target by applying the DiMP filter."""
         with torch.no_grad():
             scores = self.net.classifier.classify(self.target_filter, sample_x)
@@ -302,7 +302,7 @@ class DiMP(BaseTracker):
 
         return translation_vec1, scale_ind, scores_hn, 'normal'
 
-    def extract_backbone_features(self, im: torch.Tensor, pos: torch.Tensor, scales, sz: torch.Tensor):
+    def extract_backbone_features(self, im, pos, scales, sz):
         im_patches, patch_coords = sample_patch_multiscale(im, pos, scales, sz,
                                                            mode=self.params.get('border_mode', 'replicate'),
                                                            max_scale_change=self.params.get('patch_max_scale_change', None))
@@ -326,7 +326,7 @@ class DiMP(BaseTracker):
             return self.net.bb_regressor.get_modulation(iou_backbone_feat, target_boxes)
 
 
-    def generate_init_samples(self, im: torch.Tensor) -> TensorList:
+    def generate_init_samples(self, im):
         """Perform data augmentation to generate initial training samples."""
 
         mode = self.params.get('border_mode', 'replicate')
@@ -407,7 +407,7 @@ class DiMP(BaseTracker):
         self.target_boxes[:init_target_boxes.shape[0],:] = init_target_boxes
         return init_target_boxes
 
-    def init_memory(self, train_x: TensorList):
+    def init_memory(self, train_x):
         # Initialize first-frame spatial training samples
         self.num_init_samples = train_x.size(0)
         init_sample_weights = TensorList([x.new_ones(1) / x.shape[0] for x in train_x])
@@ -427,10 +427,10 @@ class DiMP(BaseTracker):
             ts[:x.shape[0],...] = x
 
 
-    def update_memory(self, sample_x: TensorList, target_box, learning_rate = None):
+    def update_memory(self, sample_x, target_box, learning_rate = None):
         # Update weights and get replace ind
         replace_ind = self.update_sample_weights(self.sample_weights, self.previous_replace_ind, self.num_stored_samples, self.num_init_samples, learning_rate)
-        print(f"replace_ind is {replace_ind}, train_samp size is {self.training_samples.size()}")
+        print("replace_ind is %d, train_samp size is %d"%(replace_ind, self.training_samples.size()))
         self.previous_replace_ind = replace_ind
 
         # Update sample and label memory

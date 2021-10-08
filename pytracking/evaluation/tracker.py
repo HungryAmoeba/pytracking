@@ -5,7 +5,7 @@ from collections import OrderedDict
 from pytracking.evaluation.environment import env_settings
 import time
 import cv2 as cv
-from pytracking.utils.visdom import Visdom
+#from pytracking.utils.visdom import Visdom
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from pytracking.utils.plotting import draw_figure, overlay_mask
@@ -22,7 +22,7 @@ _tracker_disp_colors = {1: (0, 255, 0), 2: (0, 0, 255), 3: (255, 0, 0),
                         7: (123, 123, 123), 8: (255, 128, 0), 9: (128, 0, 255)}
 
 
-def trackerlist(name: str, parameter_name: str, run_ids = None, display_name: str = None):
+def trackerlist(name, parameter_name, run_ids = None, display_name = None):
     """Generate list of trackers.
     args:
         name: Name of tracking method.
@@ -44,7 +44,7 @@ class Tracker:
         display_name: Name to be displayed in the result plots.
     """
 
-    def __init__(self, name: str, parameter_name: str, run_id: int = None, display_name: str = None):
+    def __init__(self, name, parameter_name, run_id = None, display_name = None):
         assert run_id is None or isinstance(run_id, int)
 
         self.name = name
@@ -220,7 +220,7 @@ class Tracker:
                   'segmentation': []}
         #import pdb; pdb.set_trace()
 
-        def _store_outputs(tracker_out: dict, defaults=None):
+        def _store_outputs(tracker_out, defaults=None):
             defaults = {} if defaults is None else defaults
             for key in output.keys():
                 val = tracker_out.get(key, defaults.get(key, None))
@@ -242,11 +242,11 @@ class Tracker:
             summary_ui_controls = {}
             for index in list(range(num_summary_img)):
                 summary_ui_controls[index] = UIControl(summary_img_num = index)
-                cv.namedWindow(f'summary image {index}', cv.WINDOW_NORMAL)
-                cv.setMouseCallback(f'summary image {index}', summary_ui_controls[index].summary_refinement_callback)
+                cv.namedWindow('summary image %d'%(index), cv.WINDOW_NORMAL)
+                cv.setMouseCallback('summary image %d'%(index), summary_ui_controls[index].summary_refinement_callback)
                 row_num = math.floor(index/num_row)
                 col_num = index - row_num * num_row
-                cv.moveWindow(f'summary image {index}', (375 * col_num) + 1, (350 * row_num ) + 1)
+                cv.moveWindow('summary image %d'%(index), (375 * col_num) + 1, (350 * row_num ) + 1)
             ui_control = UIControl()
             #cap = cv.VideoCapture(0)
             display_name = 'Display: ' + self.name
@@ -325,10 +325,10 @@ class Tracker:
                     cv.rectangle(img, start_point, end_point, (255,0,0), 3)
                     if summary_ui_controls[index].mode == 'select':
                         cv.rectangle(img, summary_ui_controls[index].get_tl(), summary_ui_controls[index].get_br(), (0,0,255), 2)
-                    cv.imshow(f'summary image {index}', img)
+                    cv.imshow('summary image %d'%(index), img)
                 # Put text
                 font_color = (0, 0, 0)
-                cv.putText(frame_disp, f'Mode: {summary_ui_controls[0].mode}', (20, 30), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, font_color, 1)
+                cv.putText(frame_disp, 'Mode: %s'%(summary_ui_controls[0].mode), (20, 30), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, font_color, 1)
                 cv.putText(frame_disp, 'r - reset', (20, 55), cv.FONT_HERSHEY_COMPLEX_SMALL, 1,
                            font_color, 1)
                 cv.putText(frame_disp, 'q - quit', (20, 85), cv.FONT_HERSHEY_COMPLEX_SMALL, 1,
@@ -858,7 +858,7 @@ class Tracker:
             self.reset_tracker()
             print("Resetting target pos to gt!")
 
-    def _read_image(self, image_file: str):
+    def _read_image(self, image_file):
         im = cv.imread(image_file)
         return cv.cvtColor(im, cv.COLOR_BGR2RGB)
 
@@ -945,11 +945,11 @@ class Tracker:
         summary_ui_controls = {}
         for index in list(range(num_summary_img)):
             summary_ui_controls[index] = UIControl(summary_img_num = index)
-            cv.namedWindow(f'summary image {index}', cv.WINDOW_NORMAL)
-            cv.setMouseCallback(f'summary image {index}', summary_ui_controls[index].summary_refinement_callback)
+            cv.namedWindow('summary image %d'%(index), cv.WINDOW_NORMAL)
+            cv.setMouseCallback('summary image %d'%(index), summary_ui_controls[index].summary_refinement_callback)
             row_num = math.floor(index/num_row)
             col_num = index - row_num * num_row
-            cv.moveWindow(f'summary image {index}', (375 * col_num) + 1, (350 * row_num ) + 1)
+            cv.moveWindow('summary image %d'%(index), (375 * col_num) + 1, (350 * row_num ) + 1)
 
         #set up the call back on summary images here
         ui_control = UIControl()
@@ -1014,7 +1014,7 @@ class Tracker:
                     cv.rectangle(img, start_point, end_point, (255,0,0), 3)
                     if summary_ui_controls[index].mode == 'select':
                         cv.rectangle(img, summary_ui_controls[index].get_tl(), summary_ui_controls[index].get_br(), (0,0,255), 2)
-                    cv.imshow(f'summary image {index}', img)
+                    cv.imshow('summary image %d'%(index), img)
 
 
                 #images = np.concatenate((summary_images[0],summary_images[1]), axis = 0)
@@ -1041,7 +1041,7 @@ class Tracker:
 
             # Put text
             font_color = (0, 0, 0)
-            cv.putText(frame_disp, f'Mode: {summary_ui_controls[0].mode}', (20, 30), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, font_color, 1)
+            cv.putText(frame_disp, 'Mode: %s'%(summary_ui_controls[0].mode), (20, 30), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, font_color, 1)
             cv.putText(frame_disp, 'r - reset', (20, 55), cv.FONT_HERSHEY_COMPLEX_SMALL, 1,
                        font_color, 1)
             cv.putText(frame_disp, 'q - quit', (20, 85), cv.FONT_HERSHEY_COMPLEX_SMALL, 1,
@@ -1094,7 +1094,7 @@ class Tracker:
             path = os.path.join(parent_dir, directory)
             os.mkdir(path)
             for index, img in enumerate(final_summary_images):
-                name = path + f"/img{index}.png"
+                name = path + "/img%d.png"%(index)
                 cv.imwrite(name, img)
 
         cap.release()

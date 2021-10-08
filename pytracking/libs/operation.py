@@ -4,7 +4,7 @@ from pytracking.libs.tensorlist import tensor_operation, TensorList
 
 
 @tensor_operation
-def conv2d(input: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor = None, stride=1, padding=0, dilation=1, groups=1, mode=None):
+def conv2d(input, weight, bias = None, stride=1, padding=0, dilation=1, groups=1, mode=None):
     """Standard conv2d. Returns the input if weight=None."""
 
     if weight is None:
@@ -33,7 +33,7 @@ def conv2d(input: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor = None,
 
 
 @tensor_operation
-def conv1x1(input: torch.Tensor, weight: torch.Tensor):
+def conv1x1(input, weight):
     """Do a convolution with a 1x1 kernel weights. Implemented with matmul, which can be faster than using conv."""
 
     if weight is None:

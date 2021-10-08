@@ -2,16 +2,16 @@ import torch
 from pytracking.libs.tensorlist import tensor_operation
 
 
-def is_complex(a: torch.Tensor) -> bool:
+def is_complex(a):
     return a.dim() >= 4 and a.shape[-1] == 2
 
 
-def is_real(a: torch.Tensor) -> bool:
+def is_real(a):
     return not is_complex(a)
 
 
 @tensor_operation
-def mult(a: torch.Tensor, b: torch.Tensor):
+def mult(a, b):
     """Pointwise complex multiplication of complex tensors."""
 
     if is_real(a):
@@ -33,7 +33,7 @@ def mult(a: torch.Tensor, b: torch.Tensor):
 
 
 @tensor_operation
-def mult_conj(a: torch.Tensor, b: torch.Tensor):
+def mult_conj(a, b):
     """Pointwise complex multiplication of complex tensors, with conjugate on b: a*conj(b)."""
 
     if is_real(a):
@@ -55,7 +55,7 @@ def mult_conj(a: torch.Tensor, b: torch.Tensor):
 
 
 @tensor_operation
-def mult_real_cplx(a: torch.Tensor, b: torch.Tensor):
+def mult_real_cplx(a, b):
     """Pointwise complex multiplication of real tensor a with complex tensor b."""
 
     if is_real(b):
@@ -65,7 +65,7 @@ def mult_real_cplx(a: torch.Tensor, b: torch.Tensor):
 
 
 @tensor_operation
-def div(a: torch.Tensor, b: torch.Tensor):
+def div(a, b):
     """Pointwise complex division of complex tensors."""
 
     if is_real(b):
@@ -78,7 +78,7 @@ def div(a: torch.Tensor, b: torch.Tensor):
 
 
 @tensor_operation
-def div_cplx_real(a: torch.Tensor, b: torch.Tensor):
+def div_cplx_real(a, b):
     """Pointwise complex division of complex tensor a with real tensor b."""
 
     if is_real(a):
@@ -88,7 +88,7 @@ def div_cplx_real(a: torch.Tensor, b: torch.Tensor):
 
 
 @tensor_operation
-def abs_sqr(a: torch.Tensor):
+def abs_sqr(a):
     """Squared absolute value."""
 
     if is_real(a):
@@ -98,7 +98,7 @@ def abs_sqr(a: torch.Tensor):
 
 
 @tensor_operation
-def abs(a: torch.Tensor):
+def abs(a):
     """Absolute value."""
 
     if is_real(a):
@@ -108,7 +108,7 @@ def abs(a: torch.Tensor):
 
 
 @tensor_operation
-def conj(a: torch.Tensor):
+def conj(a):
     """Complex conjugate."""
 
     if is_real(a):
@@ -119,7 +119,7 @@ def conj(a: torch.Tensor):
 
 
 @tensor_operation
-def real(a: torch.Tensor):
+def real(a):
     """Real part."""
 
     if is_real(a):
@@ -129,7 +129,7 @@ def real(a: torch.Tensor):
 
 
 @tensor_operation
-def imag(a: torch.Tensor):
+def imag(a):
     """Imaginary part."""
 
     if is_real(a):
@@ -139,7 +139,7 @@ def imag(a: torch.Tensor):
 
 
 @tensor_operation
-def complex(a: torch.Tensor, b: torch.Tensor = None):
+def complex(a, b=None):
     """Create complex tensor from real and imaginary part."""
 
     if b is None:
@@ -151,7 +151,7 @@ def complex(a: torch.Tensor, b: torch.Tensor = None):
 
 
 @tensor_operation
-def mtimes(a: torch.Tensor, b: torch.Tensor, conj_a=False, conj_b=False):
+def mtimes(a, b, conj_a=False, conj_b=False):
     """Complex matrix multiplication of complex tensors.
     The dimensions (-3, -2) are matrix multiplied. -1 is the complex dimension."""
 
@@ -179,7 +179,7 @@ def mtimes(a: torch.Tensor, b: torch.Tensor, conj_a=False, conj_b=False):
 
 
 @tensor_operation
-def mtimes_real_complex(a: torch.Tensor, b: torch.Tensor, conj_b=False):
+def mtimes_real_complex(a, b, conj_b=False):
     if is_real(b):
         raise ValueError('Incorrect dimensions.')
 
@@ -190,7 +190,7 @@ def mtimes_real_complex(a: torch.Tensor, b: torch.Tensor, conj_b=False):
 
 
 @tensor_operation
-def mtimes_complex_real(a: torch.Tensor, b: torch.Tensor, conj_a=False):
+def mtimes_complex_real(a, b, conj_a=False):
     if is_real(a):
         raise ValueError('Incorrect dimensions.')
 
@@ -201,7 +201,7 @@ def mtimes_complex_real(a: torch.Tensor, b: torch.Tensor, conj_a=False):
 
 
 @tensor_operation
-def exp_imag(a: torch.Tensor):
+def exp_imag(a):
     """Complex exponential with imaginary input: e^(i*a)"""
 
     a = a.unsqueeze(-1)

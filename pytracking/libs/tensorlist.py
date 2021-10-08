@@ -100,21 +100,21 @@ class TensorList(list):
 
     def __matmul__(self, other):
         if TensorList._iterable(other):
-            return TensorList([e1 @ e2 for e1, e2 in zip(self, other)])
-        return TensorList([e @ other for e in self])
+            return TensorList([torch.mm(e1,e2) for e1, e2 in zip(self, other)])
+        return TensorList([torch.mm(e,other) for e in self])
 
     def __rmatmul__(self, other):
         if TensorList._iterable(other):
-            return TensorList([e2 @ e1 for e1, e2 in zip(self, other)])
-        return TensorList([other @ e for e in self])
+            return TensorList([torch.mm(e2,e1) for e1, e2 in zip(self, other)])
+        return TensorList([torch.mm(other,e) for e in self])
 
     def __imatmul__(self, other):
         if TensorList._iterable(other):
             for i, e2 in enumerate(other):
-                self[i] @= e2
+                self[i] = torch.mm(self[i],e2)
         else:
             for i in range(len(self)):
-                self[i] @= other
+                self[i] = torch.mm(self[i],other)
         return self
 
     def __mod__(self, other):
@@ -164,7 +164,7 @@ class TensorList(list):
     def list(self):
         return list(self)
 
-    def attribute(self, attr: str, *args):
+    def attribute(self, attr, *args):
         return TensorList([getattr(e, attr, *args) for e in self])
 
     def apply(self, fn):

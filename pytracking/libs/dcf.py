@@ -5,7 +5,7 @@ from pytracking import complex
 import torch.nn.functional as F
 
 
-def hann1d(sz: int, centered = True) -> torch.Tensor:
+def hann1d(sz, centered = True):
     """1D cosine window."""
     if centered:
         return 0.5 * (1 - torch.cos((2 * math.pi / (sz + 1)) * torch.arange(1, sz + 1).float()))
@@ -13,12 +13,12 @@ def hann1d(sz: int, centered = True) -> torch.Tensor:
     return torch.cat([w, w[1:sz-sz//2].flip((0,))])
 
 
-def hann2d(sz: torch.Tensor, centered = True) -> torch.Tensor:
+def hann2d(sz, centered = True):
     """2D cosine window."""
     return hann1d(sz[0].item(), centered).reshape(1, 1, -1, 1) * hann1d(sz[1].item(), centered).reshape(1, 1, 1, -1)
 
 
-def hann2d_clipped(sz: torch.Tensor, effective_sz: torch.Tensor, centered = True) -> torch.Tensor:
+def hann2d_clipped(sz, effective_sz, centered = True):
     """1D clipped cosine window."""
 
     # Ensure that the difference is even
@@ -37,7 +37,7 @@ def hann2d_clipped(sz: torch.Tensor, effective_sz: torch.Tensor, centered = True
         return torch.cat((window_shift_lr[:, :, mid[0]:, :], window_shift_lr[:, :, :mid[0], :]), 2)
 
 
-def gauss_fourier(sz: int, sigma: float, half: bool = False) -> torch.Tensor:
+def gauss_fourier(sz, sigma, half = False):
     if half:
         k = torch.arange(0, int(sz/2+1))
     else:
@@ -50,10 +50,10 @@ def gauss_spatial(sz, sigma, center=0, end_pad=0):
     return torch.exp(-1.0/(2*sigma**2) * (k - center)**2)
 
 
-def label_function(sz: torch.Tensor, sigma: torch.Tensor):
+def label_function(sz, sigma):
     return gauss_fourier(sz[0].item(), sigma[0].item()).reshape(1, 1, -1, 1) * gauss_fourier(sz[1].item(), sigma[1].item(), True).reshape(1, 1, 1, -1)
 
-def label_function_spatial(sz: torch.Tensor, sigma: torch.Tensor, center: torch.Tensor = torch.zeros(2), end_pad: torch.Tensor = torch.zeros(2)):
+def label_function_spatial(sz, sigma, center = torch.zeros(2), end_pad = torch.zeros(2)):
     """The origin is in the middle of the image."""
     return gauss_spatial(sz[0].item(), sigma[0].item(), center[0], end_pad[0].item()).reshape(1, 1, -1, 1) * \
            gauss_spatial(sz[1].item(), sigma[1].item(), center[1], end_pad[1].item()).reshape(1, 1, 1, -1)
@@ -71,7 +71,7 @@ def cubic_spline_fourier(f, a):
     return bf
 
 
-def get_interp_fourier(sz: torch.Tensor, method='ideal', bicubic_param=0.5, centering=True, windowing=False, device='cpu'):
+def get_interp_fourier(sz, method='ideal', bicubic_param=0.5, centering=True, windowing=False, device='cpu'):
 
     ky, kx = fourier.get_frequency_coord(sz)
 
@@ -94,7 +94,7 @@ def get_interp_fourier(sz: torch.Tensor, method='ideal', bicubic_param=0.5, cent
     return interp_y.to(device), interp_x.to(device)
 
 
-def interpolate_dft(a: torch.Tensor, interp_fs) -> torch.Tensor:
+def interpolate_dft(a, interp_fs):
 
     if isinstance(interp_fs, torch.Tensor):
         return complex.mult(a, interp_fs)
@@ -103,7 +103,7 @@ def interpolate_dft(a: torch.Tensor, interp_fs) -> torch.Tensor:
     raise ValueError('"interp_fs" must be tensor or tuple of tensors.')
 
 
-def get_reg_filter(sz: torch.Tensor, target_sz: torch.Tensor, params):
+def get_reg_filter(sz, target_sz, params):
     """Computes regularization filter in CCOT and ECO."""
 
     if not params.use_reg_window:
@@ -153,7 +153,7 @@ def get_reg_filter(sz: torch.Tensor, target_sz: torch.Tensor, params):
     return reg_window_dft
 
 
-def max2d(a: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+def max2d(a):
     """Computes maximum and argmax in the last two dimensions."""
 
     max_val_row, argmax_row = torch.max(a, dim=-2)

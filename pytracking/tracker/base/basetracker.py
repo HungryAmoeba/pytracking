@@ -1,4 +1,4 @@
-from _collections import OrderedDict
+from collections import OrderedDict
 
 class BaseTracker:
     """Base class for all trackers."""
@@ -12,12 +12,12 @@ class BaseTracker:
         return False
 
 
-    def initialize(self, image, info: dict) -> dict:
+    def initialize(self, image, info):
         """Overload this function in your tracker. This should initialize the model."""
         raise NotImplementedError
 
 
-    def track(self, image, info: dict = None) -> dict:
+    def track(self, image, info = None):
         """Overload this function in your tracker. This should track in the frame and update the model."""
         raise NotImplementedError
 
@@ -26,8 +26,8 @@ class BaseTracker:
         if isinstance(box, OrderedDict):
             box = [v for k, v in box.items()]
         else:
-            box = (box,)
+            box = box
         if segmentation is None:
-            self.visdom.register((image, *box), 'Tracking', 1, 'Tracking')
+            self.visdom.register(tuple(image + box), 'Tracking', 1, 'Tracking')
         else:
-            self.visdom.register((image, *box, segmentation), 'Tracking', 1, 'Tracking')
+            self.visdom.register(tuple(image + box + segmentation), 'Tracking', 1, 'Tracking')

@@ -24,7 +24,7 @@ class TensorDict(OrderedDict):
             return TensorDict({n: getattr(e, name)(*args, **kwargs) if hasattr(e, name) else e for n, e in self.items()})
         return apply_attr
 
-    def attribute(self, attr: str, *args):
+    def attribute(self, attr, *args):
         return TensorDict({n: getattr(e, attr, *args) for n, e in self.items()})
 
     def apply(self, fn, *args, **kwargs):

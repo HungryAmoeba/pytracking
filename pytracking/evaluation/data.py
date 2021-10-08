@@ -111,7 +111,7 @@ class Sequence:
                 info[k] = val
         return info
 
-    def object_init_data(self, frame_num=None) -> dict:
+    def object_init_data(self, frame_num=None):
         if frame_num is None:
             frame_num = 0
         if frame_num not in self.init_data:
