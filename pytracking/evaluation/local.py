@@ -10,7 +10,7 @@ def local_env_settings():
     settings.got_packed_results_path = ''
     settings.got_reports_path = ''
     settings.lasot_path = ''
-    settings.network_path = '/home/warp/Documents/pytracking_summary/pytracking/networks/'    # Where tracking networks are stored.
+    settings.network_path = '/home/pytracking_summary/pytracking/networks/'    # Where tracking networks are stored.
     settings.nfs_path = ''
     settings.otb_path = ''
     settings.result_plot_path = '/home/warp/Documents/pytracking_summary/pytracking/result_plots/'

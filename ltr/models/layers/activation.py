@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def softmax_reg(x: torch.Tensor, dim, reg=None):
+def softmax_reg(x, dim, reg=None):
     """Softmax with optional denominator regularization."""
     if reg is None:
         return torch.softmax(x, dim=dim)

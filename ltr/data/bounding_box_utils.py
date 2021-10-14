@@ -41,7 +41,7 @@ def masks_to_bboxes(mask, fmt='c'):
     :return: tensor containing a batch of bounding boxes, shape = (..., 4)
     """
     batch_shape = mask.shape[:-2]
-    mask = mask.reshape((-1, *mask.shape[-2:]))
+    mask = mask.reshape((-1, mask.shape[-2:][0], mask.shape[-2:][1]))
     bboxes = []
 
     for m in mask:
