@@ -17,7 +17,15 @@ To run the tracker interactively with a dataset:
 
 ```bash
 python run_tracker.py dimp_summary super_dimp_15_interactive --dataset_name 'fish' 
-```  
+```
+
+To use the interactive GUI:
+Use keyboard to set a mode for your cursor, then click on the summary image to apply mode.
+(these are listed in evaluations/tracker.py under run_webcam_dashboard)
+"d" to delete a summary image
+"b" bbox refine
+"l" lock or unlock a summary image
+
 
 To run the RLT-xDiMP model:
 
@@ -215,3 +223,14 @@ Next, you need to create a folder "parameter/your_tracker_name", where the param
 
  
  
+=== Charles changes/notes for ongoing active learning project ===
+Currently only works with the live webcam
+GUI changes are mostly handled in evaluations/tracker.py
+
+To do "negative" examples could be handled by treating whole images as background (so making "null" bounding box (0,0,0,0) maybe? Hacky. Do this when you update the bounding box.
+
+Changed evaluations/multi_object_wrapper.py to make it single-object because it was confusing
+
+Need to move over to the run_dataset/track_sequence, generally in tracker.py
+
+Can use evaluations/get_dataset in order to pull the groundtruth information from a provided seq
