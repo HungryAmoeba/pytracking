@@ -132,6 +132,7 @@ def extract_results(trackers, dataset, report_name, skip_missing_seq=False, plot
             # Load results
             base_results_path = '{}/{}'.format(trk.results_dir, seq.name)
             results_path = '{}.txt'.format(base_results_path)
+            num_iters_path = '{}_total_num_iter_list.txt'.format(base_results_path)
 
             if os.path.isfile(results_path):
                 pred_bb = torch.tensor(load_text(str(results_path), delimiter=('\t', ','), dtype=np.float64))
@@ -194,25 +195,60 @@ def get_summary_sizes(trackers, dataset, report_name, skip_missing_seq=False, ex
     valid_sequence = torch.ones(len(dataset), dtype=torch.uint8)
 
     summary_sequences = list()
+    num_iters_sequences = list()
+    max_num_frames = 0
 
+    # Make nested lists containing all the frames, note that there are different numbers of frames in each sequence
     for seq_id, seq in enumerate(tqdm(dataset)):
         # Load anno
         anno_bb = torch.tensor(seq.ground_truth_rect)
         target_visible = torch.tensor(seq.target_visible, dtype=torch.uint8) if seq.target_visible is not None else None
+        summary_sequences.append(list())
+        num_iters_sequences.append(list())
+        
+        #summary_sequences[seq_id] = list()
         for trk_id, trk in enumerate(trackers):
             # Load results
             base_results_path = '{}/{}'.format(trk.results_dir, seq.name)
             results_path = '{}_summary_size_list.txt'.format(base_results_path)
+            num_iters_path = '{}_total_num_iter_list.txt'.format(base_results_path)
 
             if os.path.isfile(results_path):
                 summary_size_list = torch.tensor(load_text(str(results_path), delimiter=('\t', ','), dtype=np.float64))
-            
             else:
                 if skip_missing_seq:
                     valid_sequence[seq_id] = 0
                     break
                 else:
                     raise Exception('Result not found. {}'.format(results_path))
-            summary_sequences.append(summary_size_list)
 
-    return summary_sequences
+            if os.path.isfile(num_iters_path):
+                num_iters_list = torch.tensor(load_text(str(num_iters_path), delimiter=('\t', ','), dtype=np.float64))
+            else:
+                if skip_missing_seq:
+                    valid_sequence[seq_id] = 0
+                    break
+                else:
+                    raise Exception('Result not found. {}'.format(num_iters_path))
+            
+            summary_sequences[seq_id].append(list())
+            summary_sequences[seq_id][trk_id] = summary_size_list.tolist()
+            
+            num_iters_sequences[seq_id].append(list())
+            num_iters_sequences[seq_id][trk_id] = num_iters_list.tolist()
+
+            if max_num_frames < max(len(summary_size_list), len(num_iters_list)):
+                max_num_frames = max(len(summary_size_list), len(num_iters_list))
+
+    # Convert nested lists into numpy arrays we can work with
+    summary_sequences_np = np.ones((len(dataset), len(trackers), max_num_frames)) * float('nan')
+    num_iters_abs_np = np.ones((len(dataset), len(trackers), max_num_frames)) * float('nan')
+    num_iters_diff_np = np.ones((len(dataset), len(trackers), max_num_frames)) * float('nan')
+    for seq_id, seq in enumerate(tqdm(dataset)):
+        for trk_id, trk in enumerate(trackers):
+            summary_sequences_np[seq_id, trk_id, 0:len(summary_sequences[seq_id][trk_id])] = summary_sequences[seq_id][trk_id]
+            num_iters_abs_np[seq_id, trk_id, 0:len(num_iters_sequences[seq_id][trk_id])] = num_iters_sequences[seq_id][trk_id]
+            num_iters_diff_np[seq_id, trk_id, 1:] = num_iters_abs_np[seq_id][trk_id][1:] - num_iters_abs_np[seq_id][trk_id][:-1]
+            num_iters_diff_np[seq_id, trk_id, 0] = num_iters_abs_np[seq_id][trk_id][0]
+            
+    return (summary_sequences_np, num_iters_abs_np, num_iters_diff_np)

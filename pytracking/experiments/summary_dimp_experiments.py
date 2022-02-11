@@ -65,9 +65,21 @@ def VOT2020_test():
     return trackers, dataset
 
 def fish_test():
-    trackers = trackerlist('dimp_original', 'super_dimp', range(5)) + \
-               trackerlist('dimp_summary', 'super_dimp_15', range(5))
+    #trackers = trackerlist('dimp_original', 'super_dimp', range(5)) + \
+    #           trackerlist('dimp_summary', 'super_dimp_15_interactive', range(5))
 
+    trackers = trackerlist('dimp_summary', 'super_dimp_15_interactive', range(1))
+    
+    dataset = get_dataset('fish')
+
+    return trackers, dataset
+
+def active_fish_test():
+    #trackers = trackerlist('dimp_original', 'super_dimp', range(5)) + \
+    #           trackerlist('dimp_summary', 'super_dimp_15_interactive', range(5))
+
+    trackers = trackerlist('dimp_summary', 'super_dimp_15_interactive', range(1))
+    
     dataset = get_dataset('fish')
 
     return trackers, dataset

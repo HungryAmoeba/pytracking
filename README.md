@@ -1,3 +1,8 @@
+# Installation Instructions:
+run git submodule update --init
+
+edit pytracking_summary/pytracking/evaluation/local.py with correct paths
+
 # PyTracking Summary Models
 XDiMP and RLT-XDiMP are built off the SuperDimp and RLT-DiMP models and run in PyTracking -- A general python framework for visual object tracking and video object segmentation, based on **PyTorch**.
 

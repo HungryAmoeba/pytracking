@@ -12,6 +12,7 @@ from pytracking.utils.plotting import draw_figure, overlay_mask
 from pytracking.utils.convert_vot_anno_to_rect import convert_vot_anno_to_rect
 from ltr.data.bounding_box_utils import masks_to_bboxes
 from pytracking.evaluation.multi_object_wrapper import MultiObjectWrapper
+from pytracking.analysis.extract_results import calc_err_center, calc_iou_overlap
 from pathlib import Path
 import torch
 import math
@@ -284,7 +285,8 @@ class Tracker:
 
             info = seq.frame_info(frame_num)
             info['previous_output'] = prev_output
-
+            info['gt'] = seq.ground_truth_rect[frame_num,:]
+            
             if interactive:
                 if ui_control.mode == 'lock':
                     tracker.set_lock_true()
@@ -342,6 +344,11 @@ class Tracker:
                     state = [int(s) for s in bbox]
                     cv.rectangle(frame_disp, (state[0], state[1]), (state[2] + state[0], state[3] + state[1]),
                                  (0,255,0), 5)
+                    # plot the ground truth frame as well, these are in x,y,w,h
+                    gt = [int(s) for s in seq.ground_truth_rect[frame_num,:]]
+                    cv.rectangle(frame_disp, (gt[0], gt[1]), (gt[2]+gt[0], gt[3]+gt[1]), (255,255,0), 5)
+
+                    print(calc_iou_overlap(torch.tensor(state).unsqueeze(0), torch.tensor(gt).unsqueeze(0)))
 
                 # Display the resulting frame
                 cv.imshow(display_name, frame_disp)
@@ -372,10 +379,6 @@ class Tracker:
                         ui_control.mode = 'track'
                     else:
                         ui_control.mode = 'lock'
-
-
-
-
 
         for key in ['target_bbox', 'segmentation']:
             if key in output and len(output[key]) <= 1:

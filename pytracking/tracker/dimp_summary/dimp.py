@@ -11,6 +11,7 @@ from pytracking.features import augmentation
 import ltr.data.bounding_box_utils as bbutils
 from ltr.models.target_classifier.initializer import FilterInitializerZero
 from ltr.models.layers import activation
+from pytracking.analysis.extract_results import calc_err_center, calc_iou_overlap
 
 #additional mode for k centers summary
 import pytracking.libs.kcenters as kc
@@ -108,11 +109,12 @@ class DiMP(BaseTracker):
         return out
 
 
-    def track(self, image, manual_replace = -1, info: dict = None) -> dict:
+    def track(self, image, info: dict = None) -> dict:
         self.debug_info = {}
 
         self.frame_num += 1
         self.debug_info['frame_num'] = self.frame_num
+        gt = info['gt']
 
         # Convert image
         im = numpy_to_torch(image)
@@ -160,6 +162,8 @@ class DiMP(BaseTracker):
             # Create target_box and label for spatial sample
             target_box = self.get_iounet_box(self.pos, self.target_sz, sample_pos[scale_ind,:], sample_scales[scale_ind])
 
+            print("pre-update: ",target_box)
+            
             # Update the classifier model
             self.update_classifier(train_x, target_box, im_patches, learning_rate, s[scale_ind,...])
 
@@ -182,7 +186,8 @@ class DiMP(BaseTracker):
 
         # Compute output bounding box
         new_state = torch.cat((self.pos[[1,0]] - (self.target_sz[[1,0]]-1)/2, self.target_sz[[1,0]]))
-
+        print("post-update: ", new_state)
+        
         if self.params.get('output_not_found_box', False) and flag == 'not_found':
             output_state = [-1, -1, -1, -1]
         else:
@@ -533,7 +538,8 @@ class DiMP(BaseTracker):
             self.training_samples[0][summary_replace_ind] = sample_x[0][0]
             self.target_boxes[summary_replace_ind,:] = target_box.to(self.params.device)
             img = im_patch.reshape(im_patch.size()[1:])
-            img = torch.moveaxis((img-img.min())/(img.max()-img.min()), 0, 2)
+            #img = torch.moveaxis((img-img.min())/(img.max()-img.min()), 0, 2)
+            img = torch.movedim((img-img.min())/(img.max()-img.min()), 0, 2)
             self.summary_patches[summary_replace_ind-self.num_init_samples[0]] = img
             self.summary_update = True
             self.summary_prev_ind = summary_replace_ind
@@ -864,7 +870,6 @@ class DiMP(BaseTracker):
 
         # self.visualize_iou_pred(iou_features, predicted_box)
 
-
     def optimize_boxes(self, iou_features, init_boxes):
         box_refinement_space = self.params.get('box_refinement_space', 'default')
         if box_refinement_space == 'default':
@@ -872,7 +877,6 @@ class DiMP(BaseTracker):
         if box_refinement_space == 'relative':
             return self.optimize_boxes_relative(iou_features, init_boxes)
         raise ValueError('Unknown box_refinement_space {}'.format(box_refinement_space))
-
 
     def optimize_boxes_default(self, iou_features, init_boxes):
         """Optimize iounet boxes with the default parametrization"""
@@ -1023,6 +1027,7 @@ class DiMP(BaseTracker):
         start_ind = self.num_init_samples[0]
         end_ind = self.online_start_ind[0]
         return self.target_boxes[start_ind:end_ind]
+    
     def return_bbox(self):
         return self.target_boxes
 
@@ -1031,6 +1036,7 @@ class DiMP(BaseTracker):
 
         # above step not needed
         self.del_summary_num = index
+        
     def update_bbox(self, index, bbox):
         adj_index = index + self.num_init_samples[0]
         self.target_boxes[adj_index] = bbox
