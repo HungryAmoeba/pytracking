@@ -151,6 +151,18 @@ class DiMP(BaseTracker):
 
         # ------- UPDATE ------- #
 
+        # Query true label
+        
+        pred_bb = torch.cat((self.pos[[1,0]] - (self.target_sz[[1,0]]-1)/2, self.target_sz[[1,0]]))
+        iou = calc_iou_overlap(torch.tensor(gt).unsqueeze(0), pred_bb.unsqueeze(0))
+        
+        print(torch.tensor(gt))
+        print(pred_bb)
+        print(iou)
+
+        if iou < 0.5:
+            flag = 'not_found'
+        
         update_flag = flag not in ['not_found', 'uncertain']
         hard_negative = (flag == 'hard_negative')
         learning_rate = self.params.get('hard_negative_learning_rate', None) if hard_negative else None
