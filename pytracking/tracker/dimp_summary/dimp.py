@@ -52,6 +52,7 @@ class DiMP(BaseTracker):
         self.del_summary_num = -1
         self.summary_size = [self.params.get('summary_size', 15)]
         self.lock_mode = False
+        self.in_default = False
 
         # store computed thresholds
         self.use_saved_threshold = False
@@ -589,12 +590,12 @@ class DiMP(BaseTracker):
         # UPDATE_HERE
         new_threshold = 0
 
-        in_default = False
+        self.in_default = False
 
         if self.summary_stored_samples < self.summary_size[0]:
             summary_replace_ind = self.summary_stored_samples
             self.summary_stored_samples = self.summary_stored_samples + 1
-            in_default = True
+            self.in_default = True
         else:
             extremum_summary_set = self.training_samples[0][num_init_samples[0]:s_ind]
             #import pdb; pdb.set_trace()
@@ -614,7 +615,7 @@ class DiMP(BaseTracker):
         if self.lock_mode:
             summary_replace_ind = -1
 
-        if not in_default and summary_replace_ind != -1:
+        if not self.in_default and summary_replace_ind != -1:
             #summary_replace_ind = -1
             '''
             new_summary_set = self.training_samples[0][num_init_samples[0]:s_ind]
@@ -625,7 +626,7 @@ class DiMP(BaseTracker):
             pass
 
         if summary_replace_ind != -1:
-            if not in_default:
+            if not self.in_default:
                 self.use_saved_threshold = False
                 self.saved_threshold = new_threshold
             summary_replace_ind = summary_replace_ind + num_init_samples[0]
@@ -770,8 +771,14 @@ class DiMP(BaseTracker):
             num_iter = self.params.get('net_opt_hn_iter', None)
         elif low_score_th is not None and low_score_th > scores.max().item():
             num_iter = self.params.get('net_opt_low_iter', None)
+        elif self.summary_update and not self.in_default:
+            num_iter = self.params.get('summary_update_num_iter', 0)
+            #print(f"Num iter is {num_iter} due to summary update")
         elif (self.frame_num - 1) % self.params.train_skipping == 0:
             num_iter = self.params.get('net_opt_update_iter', None)
+            #print(f"Num iter {num_iter} due to every 20 updates")
+
+
 
         plot_loss = self.params.debug > 0
 
