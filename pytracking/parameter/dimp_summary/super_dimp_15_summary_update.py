@@ -15,7 +15,7 @@ def parameters():
     params.patch_max_scale_change = 1.5
 
     # Learning parameters
-    params.sample_memory_size = 50 #this gets overwritten in  init_target_boxes and is obsolete
+    params.sample_memory_size = 50
     params.learning_rate = 0.01
     params.init_samples_minimum_weight = 0.25
     params.train_skipping = 20
@@ -23,6 +23,7 @@ def parameters():
     # Summary set size
     params.summary_size = 15
     params.summary_rel_weight = .5
+    params.summary_update_num_iter = 1
 
     # Interactivity
     params.interactive = False
