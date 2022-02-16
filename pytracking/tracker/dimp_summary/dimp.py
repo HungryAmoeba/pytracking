@@ -156,12 +156,13 @@ class DiMP(BaseTracker):
         pred_bb = torch.cat((self.pos[[1,0]] - (self.target_sz[[1,0]]-1)/2, self.target_sz[[1,0]]))
         iou = calc_iou_overlap(torch.tensor(gt).unsqueeze(0), pred_bb.unsqueeze(0))
         
-        print(torch.tensor(gt))
-        print(pred_bb)
+        #print(torch.tensor(gt))
+        #print(pred_bb)
         print(iou)
 
+        mem_flag = True
         if iou < 0.5:
-            flag = 'not_found'
+            mem_flag = False
         
         update_flag = flag not in ['not_found', 'uncertain']
         hard_negative = (flag == 'hard_negative')
@@ -174,10 +175,8 @@ class DiMP(BaseTracker):
             # Create target_box and label for spatial sample
             target_box = self.get_iounet_box(self.pos, self.target_sz, sample_pos[scale_ind,:], sample_scales[scale_ind])
 
-            print("pre-update: ",target_box)
-            
             # Update the classifier model
-            self.update_classifier(train_x, target_box, im_patches, learning_rate, s[scale_ind,...])
+            self.update_classifier(train_x, target_box, im_patches, learning_rate, s[scale_ind,...], mem_flag)
 
         # Set the pos of the tracker to iounet pos
         if self.params.get('use_iou_net', True) and flag != 'not_found' and hasattr(self, 'pos_iounet'):
@@ -198,7 +197,6 @@ class DiMP(BaseTracker):
 
         # Compute output bounding box
         new_state = torch.cat((self.pos[[1,0]] - (self.target_sz[[1,0]]-1)/2, self.target_sz[[1,0]]))
-        print("post-update: ", new_state)
         
         if self.params.get('output_not_found_box', False) and flag == 'not_found':
             output_state = [-1, -1, -1, -1]
@@ -212,7 +210,6 @@ class DiMP(BaseTracker):
         else:
             out = {'target_bbox': output_state}
         return out
-
 
     def get_sample_location(self, sample_coord):
         """Get the location of the extracted sample."""
@@ -771,7 +768,7 @@ class DiMP(BaseTracker):
             self.net.classifier.filter_initializer = FilterInitializerZero(self.net.classifier.filter_size, feature_dim)
 
 
-    def update_classifier(self, train_x, target_box, im_patch, learning_rate=None, scores=None):
+    def update_classifier(self, train_x, target_box, im_patch, learning_rate=None, scores=None, mem_flag=True):
         # Set flags and learning rate
         hard_negative_flag = learning_rate is not None
         if learning_rate is None:
@@ -779,7 +776,8 @@ class DiMP(BaseTracker):
 
         # Update the tracker memory
         if hard_negative_flag or self.frame_num % self.params.get('train_sample_interval', 1) == 0:
-            self.update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
+            if mem_flag:
+                self.update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
 
         # Decide the number of iterations to run
         num_iter = 0
