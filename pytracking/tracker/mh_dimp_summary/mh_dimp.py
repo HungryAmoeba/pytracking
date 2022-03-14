@@ -20,24 +20,33 @@ import pytracking.libs.visualization as vs
 import matplotlib.pyplot as plt
 import copy
 
+class TrainingSample(object):
+    def __init__(self):
+        self.sample = None
+        self.target_box = None
+        self.im_patch = None
+        self.weight = 0
+        self.id = None
+        self.num_supported_hypotheses = 0
+
 class MH_Node(object):
-    def __init__(self, net, target_filter):
-        #TODO deal with this deepcopy stuff better
-        self.net = copy.deepcopy(net)
-        self.target_filter = copy.deepcopy(target_filter)
+    def __init__(self):
+        self.net = None
+        self.target_filter = None
 
         self.curr_feats = None
         self.curr_scores = None
-        self.mem_ids = None
+        self.mem_ids = set()
+        self.frame_ids = set()
+        self.scores = []
 
-        # array of MH_Nodes
-        self.children = []
-
-    def del_children(self):
-        for i in range(len(self.children)):
-            child = self.children.pop()
-            child.del_children()
-            del child
+    def clone(self):
+        new_hypo = MH_Node()
+        new_hypo.net = copy.deepcopy(self.net)
+        new_hypo.target_filter = copy.deepcopy(self.target_filter)
+        new_hypo.frame_ids = copy.deepcopy(self.frame_ids)
+        new_hypo.mem_ids = copy.deepcopy(self.mem_ids)
+        return new_hypo
 
 class MH_DiMP(BaseTracker):
 
@@ -68,6 +77,7 @@ class MH_DiMP(BaseTracker):
 
         # Initialize dashboard image holder
         self.summary_patches = torch.zeros(self.params.get('summary_size', 15), self.params.image_sample_size, self.params.image_sample_size, 3)
+        self.mh_global_patches = {}
         self.summary_update = False
         self.summary_prev_ind = -1
         self.summary_stored_samples = 0
@@ -128,15 +138,21 @@ class MH_DiMP(BaseTracker):
             self.init_iou_net(init_backbone_feat)
 
         # Initialize multi-hypothesis trackers
-        self.mh_tracks = {}
-        self.mh_tracks[self.frame_num] = {}
-        new_hypothesis = MH_Node(self.net, self.target_filter)
+        new_hypothesis = MH_Node()
+        new_hypothesis.target_filter = self.target_filter
+        new_hypothesis.net = self.net
         new_hypothesis.mem_ids = set(range(self.num_init_samples[0]))
-        self.mh_tracks[self.frame_num][frozenset({self.frame_num})] = new_hypothesis
 
+        self.hypotheses = []
+        self.hypotheses.append(new_hypothesis)
+
+        self.mh_training_sample_set = {}
 
         # Used to select images in the memory buffer given frame numbers
         self.mh_mem_ids_to_frames = torch.tensor([0] * self.summary_size[0])
+
+        # Tracks frames still being referenced by trackers
+        self.frames_reference_counters = torch.tensor([0] * self.summary_size[0])
 
         out = {'time': time.time() - tic}
         return out
@@ -149,6 +165,9 @@ class MH_DiMP(BaseTracker):
 
         # Convert image
         im = numpy_to_torch(image)
+
+        print([x.frame_ids for x in self.hypotheses])
+        print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
 
         # ------- LOCALIZATION ------- #
 
@@ -251,21 +270,43 @@ class MH_DiMP(BaseTracker):
         return scores
 
     def mh_classify_target(self):
-        # TODO: This is incredibly naive, especially with convoluting objects
+        # TODO: This is incredibly naive
         best_max_score = 0
         best_score = None
         best_feats = None
-        for frame_num in self.mh_tracks:
-            for idxs in self.mh_tracks[frame_num]:
-                mh_node = self.mh_tracks[frame_num][idxs]
-                with torch.no_grad():
-                    mh_node.curr_scores = mh_node.net.cuda().classifier.classify(mh_node.target_filter.cuda(), mh_node.curr_feats.cuda())
-                    max_score = torch.max(mh_node.curr_scores.cuda())
 
-                    if max_score > best_max_score:
-                        best_max_score = max_score
-                        best_score = mh_node.curr_scores
-                        best_feats = mh_node.curr_feats
+        # Get classification scores for all hypotheses, return the best one as current estimate
+        scores = torch.tensor([0.0]*len(self.hypotheses))
+        for i, hypothesis in enumerate(self.hypotheses):
+            with torch.no_grad():
+                hypothesis.curr_scores = hypothesis.net.classifier.classify(hypothesis.target_filter,
+                                                                            hypothesis.curr_feats)
+                max_score = torch.max(hypothesis.curr_scores)
+                hypothesis.scores.append(max_score)
+                scores[i] = max_score
+
+                if max_score > best_max_score:
+                    best_max_score = max_score
+                    best_score = hypothesis.curr_scores
+                    best_feats = hypothesis.curr_feats
+
+        # Prune the worst-confidence until we have max number of hypotheses remaining
+        max_num_hypotheses = self.params.get("max_num_hypotheses", 8)
+        if len(self.hypotheses) > max_num_hypotheses:
+            top_k_scores, top_k_inds = torch.topk(scores, max_num_hypotheses)
+            new_hypotheses = [0]*max_num_hypotheses
+
+            # Decrement counter for training samples
+            # todo: this is inefficient
+            for i, h in enumerate(self.hypotheses):
+                if i not in top_k_inds:
+                    for frame_id in h.frame_ids:
+                        self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
+
+            for i, k in enumerate(top_k_inds):
+                new_hypotheses[i] = self.hypotheses[k]
+            self.hypotheses = new_hypotheses
+
         return best_score, best_feats
 
     def localize_target(self, scores, sample_pos, sample_scales):
@@ -388,10 +429,8 @@ class MH_DiMP(BaseTracker):
             return self.net.extract_classification_feat(backbone_feat)
 
     def mh_get_classification_features(self, backbone_feat):
-        for frame_num in self.mh_tracks:
-            for idxs in self.mh_tracks[frame_num]:
-                mh_node = self.mh_tracks[frame_num][idxs]
-                mh_node.curr_feats = mh_node.net.extract_classification_feat(backbone_feat)
+        for hypothesis in self.hypotheses:
+            hypothesis.curr_feats = hypothesis.net.extract_classification_feat(backbone_feat)
 
     def get_iou_backbone_features(self, backbone_feat):
         return self.net.get_backbone_bbreg_feat(backbone_feat)
@@ -525,8 +564,15 @@ class MH_DiMP(BaseTracker):
         self.num_init_samples = train_x.size(0)
 
         # make init_sample_weights the initial augmentation sample weights
+        # todo: what should the initial weights be
+        # todo: what should the sample weights be (idea: probably the same in the multi-hypothesis case actually)
         init_sample_weights = TensorList([x.new_ones(1) / (x.shape[0] + self.summary_rel_weight * self.summary_size[0]) for x in train_x])
         summary_sample_weights = TensorList([self.summary_rel_weight * init_sample_weights])
+
+        # Used for the global MH tracker
+        # todo: likely don't need these/these weights should probably be the same
+        self.mh_initial_sample_weight = init_sample_weights
+        self.mh_online_sample_weight = summary_sample_weights[0]
 
         #init_sample_weights = TensorList([x.new_ones(1) / x.shape[0] for x in train_x])
 
@@ -555,6 +601,10 @@ class MH_DiMP(BaseTracker):
         self.training_samples = TensorList(
             [x.new_zeros(self.sample_memory_size, x.shape[1], x.shape[2], x.shape[3]) for x in train_x])
 
+        # todo: clean this up
+        self.mh_initial_training_samples = train_x
+        self.mh_initial_sample_weights = self.sample_weights[0][:self.num_init_samples[0]]
+
         for ts, x in zip(self.training_samples, train_x):
             ts[:x.shape[0],...] = x
 
@@ -573,6 +623,104 @@ class MH_DiMP(BaseTracker):
                 self.training_samples[0][i] = train_x[0][i-self.num_init_samples[0]]
                 '''
 
+    def mh_update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
+
+        # Add sample to the training set
+        ts = TrainingSample()
+        ts.sample = sample_x
+        ts.weight = self.mh_online_sample_weight
+        ts.id = self.frame_num
+        ts.target_box = target_box.to(self.params.device)
+        img = im_patch.reshape(im_patch.size()[1:])
+        img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
+        ts.im_patch = img
+        self.mh_training_sample_set[self.frame_num] = ts
+
+        # Update hypotheses
+        new_hypotheses = []
+        for hypothesis in self.hypotheses:
+            new_hypothesis = hypothesis.clone()
+            new_hypothesis.frame_ids.add(self.frame_num)
+
+            for frame_id in new_hypothesis.frame_ids:
+                self.mh_training_sample_set[frame_id].num_supported_hypotheses += 1
+
+            # new_hypothesis.mem_ids.add(summary_replace_ind)
+            num_online_samples = len(new_hypothesis.frame_ids)
+            num_init_samples = self.num_init_samples[0]
+            num_training_samples = num_init_samples + num_online_samples
+            samples = torch.zeros(torch.Size([num_training_samples]) + self.mh_initial_training_samples[0].shape[1:], device=self.params.device)
+            sample_weights = torch.zeros([num_training_samples], device=self.params.device)
+            target_boxes = torch.zeros([num_training_samples, 4], device=self.params.device)
+
+            # todo: vectorize this!?
+            frame_ids = new_hypothesis.frame_ids
+            for i, frame_id in enumerate(frame_ids):
+                samples[i, ...] = self.mh_training_sample_set[frame_id].sample
+                sample_weights[i, ...] = self.mh_training_sample_set[frame_id].weight
+                target_boxes[i, ...] = self.mh_training_sample_set[frame_id].target_box
+
+            num_iter = 2  # todo: make this smarter?
+            plot_loss = True
+
+            # Run the filter optimizer module
+            with torch.no_grad():
+                new_hypothesis.target_filter, _, losses = new_hypothesis.net.classifier.filter_optimizer(
+                    new_hypothesis.target_filter,
+                    num_iter=num_iter,
+                    feat=samples,
+                    bb=target_boxes,
+                    sample_weight=sample_weights,
+                    compute_losses=plot_loss)
+            # todo: this seems dumb
+            new_hypotheses.append(hypothesis)
+            new_hypotheses.append(new_hypothesis)
+        self.hypotheses = new_hypotheses
+
+        self.mh_prune_training_sample_memory()
+
+    def mh_prune_training_sample_memory(self):
+        # Prune global training sample memory
+        global_frame_ids = list(self.mh_training_sample_set.keys())
+        for frame_id in global_frame_ids:
+            if self.mh_training_sample_set[frame_id].num_supported_hypotheses <= 0:
+                self.mh_training_sample_set.pop(frame_id, None)
+
+    def mh_prune_frame_id(self, pruned_frame_id):
+        if pruned_frame_id not in self.mh_training_sample_set:
+            return
+
+        new_hypotheses = []
+        forget_inds = []
+        for i, hypothesis in enumerate(self.hypotheses):
+            if pruned_frame_id in hypothesis.frame_ids:
+                forget_inds.append(i)
+                continue
+            new_hypotheses.append(hypothesis)
+
+        # todo: for the degenerate case, rather than pruning hypotheses, just prune reference to the sample
+        if len(new_hypotheses) is 0:
+            print(f"Not pruning sample {pruned_frame_id} due to degenerate case")
+            return
+
+        # If we do prune, update global training memory counters
+        for i in forget_inds:
+            h = self.hypotheses[i]
+            for frame_id in h.frame_ids:
+                self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
+
+        self.mh_prune_training_sample_memory()
+        self.hypotheses = new_hypotheses
+
+        self.mh_training_sample_set.pop(pruned_frame_id, None)
+
+    def print_summary(self):
+        print([x.frame_ids for x in self.hypotheses])
+        print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
+
+    def mh_update_sample_weights(self, sample_weights, previous_replace_ind, num_stored_samples, num_init_samples, sample_x, learning_rate):
+        pass
+
     def update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
         # Update weights and get replace ind
         replace_ind, summary_replace_ind = self.update_sample_weights(self.sample_weights, self.previous_replace_ind, self.num_stored_samples, self.num_init_samples, sample_x, learning_rate)
@@ -586,9 +734,12 @@ class MH_DiMP(BaseTracker):
                 train_samp[ind:ind+1,...] = x
         '''
 
+        # Update weights
+
         if summary_replace_ind != -1:
             # TODO: track mapping from frame_num to training_sample/summary_patches (note that training samples is all, summary_patches is only the new ones)
             self.training_samples[0][summary_replace_ind] = sample_x[0][0]
+
             self.target_boxes[summary_replace_ind,:] = target_box.to(self.params.device)
             img = im_patch.reshape(im_patch.size()[1:])
             img = torch.moveaxis((img-img.min())/(img.max()-img.min()), 0, 2)
@@ -604,52 +755,38 @@ class MH_DiMP(BaseTracker):
             online_replace_ind = summary_replace_ind - self.num_init_samples[0]
             frame_num = self.mh_mem_ids_to_frames[online_replace_ind]
 
-            # Prune due to replacement from extremum summary
-            if frame_num > 0:
-                for frame_ids in self.mh_tracks[frame_num]:
-                    self.mh_tracks[frame_ids].del_children()
-                    del self.mh_tracks[frame_ids]
-                del self.mh_tracks[frame_num]
+            # Add new hypotheses and train them
+            new_hypotheses = []
+            for hypothesis in self.hypotheses:
+                new_hypothesis = hypothesis.clone()
+                new_hypothesis.frame_ids.add(self.frame_num)
+                #new_hypothesis.mem_ids.add(summary_replace_ind)
 
-            self.mh_mem_ids_to_frames[online_replace_ind] = self.frame_num
+                mem_ids = torch.tensor(list(new_hypothesis.mem_ids)).cuda()
+                samples = torch.index_select(self.training_samples[0], 0, mem_ids)
+                target_boxes = torch.index_select(self.target_boxes, 0, mem_ids) # self.target_boxes[:self.num_stored_samples[0], :].clone()
+                sample_weights = torch.index_select(self.sample_weights[0], 0, mem_ids)  # self.sample_weights[0][:self.num_stored_samples[0]]
 
-            # Add new hypotheses
-            self.mh_tracks[self.frame_num] = {}
-            for frame_num in self.mh_tracks:
-                for frame_ids in self.mh_tracks[frame_num]:
-                    parent_hypothesis = self.mh_tracks[frame_num][frame_ids]
-                    new_frame_ids = set(frame_ids)
-                    new_frame_ids.add(self.frame_num)
-                    new_hypothesis = MH_Node(parent_hypothesis.net, parent_hypothesis.target_filter)
+                num_iter = 2 # todo: fix this
+                plot_loss = True
 
-                    # TODO: verify this is reasonable
-                    new_hypothesis.mem_ids = parent_hypothesis.mem_ids.copy()
-                    new_hypothesis.mem_ids.add(summary_replace_ind)
-
-                    self.mh_tracks[self.frame_num][frozenset(new_frame_ids)] = new_hypothesis
-
-                    # TODO is this where they should get updated...?
-                    mem_ids = list(new_hypothesis.mem_ids)
-                    samples = torch.index_select(self.training_samples[0], 0, torch.tensor(mem_ids).cuda())
-                    target_boxes = torch.index_select(self.target_boxes[0], 0, mem_ids).clone() #self.target_boxes[:self.num_stored_samples[0], :].clone()
-                    sample_weights = torch.index_select(self.sample_weights[0], 0, mem_ids) #self.sample_weights[0][:self.num_stored_samples[0]]
-
-                    # Run the filter optimizer module
-                    with torch.no_grad():
-                        new_hypothesis.target_filter, _, losses = new_hypothesis.net.classifier.filter_optimizer(new_hypothesis.target_filter,
-                                                                       num_iter=num_iter,
-                                                                       feat=samples,
-                                                                       bb=target_boxes,
-                                                                       sample_weight=sample_weights,
-                                                                       compute_losses=plot_loss)
+                # Run the filter optimizer module
+                with torch.no_grad():
+                    new_hypothesis.target_filter, _, losses = new_hypothesis.net.classifier.filter_optimizer(new_hypothesis.target_filter,
+                                                                                                                num_iter=num_iter,
+                                                                                                                feat=samples,
+                                                                                                                bb=target_boxes,
+                                                                                                                sample_weight=sample_weights,
+                                                                                                                compute_losses=plot_loss)
+                # todo: this seems dumb
+                new_hypotheses.append(hypothesis)
+                new_hypotheses.append(new_hypothesis)
+            self.hypotheses = new_hypotheses
 
         # Update bb memory
         #self.target_boxes[replace_ind[0],:] = target_box.to(self.params.device)
 
-        num_tracks = 0
-        for frame_dict in self.mh_tracks.values():
-            num_tracks += len(frame_dict.keys())
-        print("Number of tracks", num_tracks)
+        print("Number of tracks", len(self.hypotheses))
         # TODO: why does this not stop going up?
         self.num_stored_samples[0] += 1
 
@@ -657,43 +794,7 @@ class MH_DiMP(BaseTracker):
         # Update weights and get index to replace
         #import pdb; pdb.set_trace()
         replace_ind = -1
-        '''
-        replace_ind = []
-        for sw, prev_ind, num_samp, num_init in zip(sample_weights, previous_replace_ind, num_stored_samples, num_init_samples):
-            lr = learning_rate
-            if lr is None:
-                lr = self.params.learning_rate
 
-            init_samp_weight = self.params.get('init_samples_minimum_weight', None)
-            if init_samp_weight == 0:
-                init_samp_weight = None
-            s_ind = 0 if init_samp_weight is None else self.online_start_ind[0]
-
-            if num_samp == 0 or lr == 1:
-                sw[:] = 0
-                sw[0] = 1
-                r_ind = 0
-            else:
-                # Get index to replace
-                if num_samp < sw.shape[0]:
-                    r_ind = num_samp
-                else:
-                    _, r_ind = torch.min(sw[s_ind:], 0)
-                    r_ind = r_ind.item() + s_ind
-
-                # Update weights
-                if prev_ind is None:
-                    sw /= 1 - lr
-                    sw[r_ind] = lr
-                else:
-                    sw[r_ind] = sw[prev_ind] / (1 - lr)
-
-            sw /= sw.sum()
-            if init_samp_weight is not None and sw[:num_init].sum() < init_samp_weight:
-                sw /= init_samp_weight + sw[num_init:].sum()
-                sw[:num_init] = init_samp_weight / num_init
-
-            replace_ind.append(r_ind)'''
         s_ind = self.sample_memory_size
         summary_replace_ind = -1
         observation = sample_x[0]
@@ -702,13 +803,13 @@ class MH_DiMP(BaseTracker):
 
         self.in_default = False
 
+        # If summary buffer is not full yet, simply add
         if self.summary_stored_samples < self.summary_size[0]:
             summary_replace_ind = self.summary_stored_samples
             self.summary_stored_samples = self.summary_stored_samples + 1
             self.in_default = True
         else:
             extremum_summary_set = self.training_samples[0][num_init_samples[0]:s_ind]
-            #import pdb; pdb.set_trace()
             if self.del_summary_num != -1:
                 summary_replace_ind = self.del_summary_num
                 self.del_summary_num = -1
@@ -872,7 +973,8 @@ class MH_DiMP(BaseTracker):
 
         # Update the tracker memory
         if hard_negative_flag or self.frame_num % self.params.get('train_sample_interval', 1) == 0:
-            self.update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
+            #self.update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
+            self.mh_update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
 
         # Decide the number of iterations to run
         num_iter = 0

@@ -49,11 +49,11 @@ class FishDataset(BaseDataset):
         return len(self.sequence_list)
 
     def _get_sequence_list(self):
-        sequence_list= ['hanlon_octopus_30fps_480p1_short',
+        sequence_list= ['kukulya_shark_30fps_480p',
+                        'hanlon_octopus_30fps_480p1_short',
                         'hanlon_octopus_30fps_480p5_st',
                         'hanlon_octopus_30fps_480p6',
                         'hanlon_octopus_30fps_480p9',
-                        'kukulya_shark_30fps_480p',
                         'kukulya_shark_bottom_30fps_480p',
                         'kukulya_shark_snow_30fps_480p',
                         'kukulya_taylor_dolphins_30fps_480p_st',

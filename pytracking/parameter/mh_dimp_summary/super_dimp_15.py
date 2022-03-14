@@ -21,8 +21,9 @@ def parameters():
     params.train_skipping = 20
 
     # Summary set size
-    params.summary_size = 15
+    params.summary_size = 35
     params.summary_rel_weight = .5
+    params.max_num_hypotheses = 4
 
     # Interactivity
     params.interactive = False
