@@ -170,6 +170,8 @@ class MH_DiMP(BaseTracker):
         # Convert image
         im = numpy_to_torch(image)
 
+        print("Num hypo: ", len(self.hypotheses))
+        print("Num samples: ", len(self.mh_training_sample_set))
         print([x.frame_ids for x in self.hypotheses])
         print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
 
@@ -275,42 +277,22 @@ class MH_DiMP(BaseTracker):
 
     def mh_classify_target(self):
         # TODO: This is incredibly naive
-        best_max_score = 0
+        best_max_score = -float("Inf")
         best_score = None
         best_feats = None
 
         # Get classification scores for all hypotheses, return the best one as current estimate
-        scores = torch.tensor([0.0]*len(self.hypotheses))
         for i, hypothesis in enumerate(self.hypotheses):
             with torch.no_grad():
                 hypothesis.curr_scores = hypothesis.net.classifier.classify(hypothesis.target_filter,
                                                                             hypothesis.curr_feats)
                 max_score = torch.max(hypothesis.curr_scores)
                 hypothesis.scores.append(max_score)
-                scores[i] = max_score
 
                 if max_score > best_max_score:
                     best_max_score = max_score
                     best_score = hypothesis.curr_scores
                     best_feats = hypothesis.curr_feats
-
-        # Prune the worst-confidence until we have max number of hypotheses remaining
-        max_num_hypotheses = self.params.get("max_num_hypotheses", 8)
-        if len(self.hypotheses) > max_num_hypotheses:
-            top_k_scores, top_k_inds = torch.topk(scores, max_num_hypotheses)
-            new_hypotheses = [0]*max_num_hypotheses
-
-            # Decrement counter for training samples
-            # todo: this is inefficient
-            for i, h in enumerate(self.hypotheses):
-                if i not in top_k_inds:
-                    for frame_id in h.frame_ids:
-                        self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
-
-            for i, k in enumerate(top_k_inds):
-                new_hypotheses[i] = self.hypotheses[k]
-            self.hypotheses = new_hypotheses
-
         return best_score, best_feats
 
     def localize_target(self, scores, sample_pos, sample_scales):
@@ -629,6 +611,24 @@ class MH_DiMP(BaseTracker):
 
     def mh_update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
 
+        # Prune the worst-confidence until we have max number of hypotheses remaining
+        max_num_hypotheses = self.params.get("max_num_hypotheses", 8)
+        scores = torch.tensor([h.scores[-1] for h in self.hypotheses])
+        if len(self.hypotheses) > max_num_hypotheses:
+            top_k_scores, top_k_inds = torch.topk(scores, max_num_hypotheses)
+            new_hypotheses = [0]*max_num_hypotheses
+
+            # Decrement counter for training samples
+            # todo: this is inefficient
+            for i, h in enumerate(self.hypotheses):
+                if i not in top_k_inds:
+                    for frame_id in h.frame_ids:
+                        self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
+
+            for i, k in enumerate(top_k_inds):
+                new_hypotheses[i] = self.hypotheses[k]
+            self.hypotheses = new_hypotheses
+
         # Add sample to the training set
         ts = TrainingSample()
         ts.sample = sample_x
@@ -665,7 +665,7 @@ class MH_DiMP(BaseTracker):
                 target_boxes[i, ...] = self.mh_training_sample_set[frame_id].target_box
 
             num_iter = 2  # todo: make this smarter?
-            plot_loss = True
+            plot_loss = self.params.debug > 0
 
             # Run the filter optimizer module
             with torch.no_grad():
