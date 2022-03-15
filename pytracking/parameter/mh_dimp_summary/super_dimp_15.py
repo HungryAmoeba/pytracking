@@ -9,6 +9,8 @@ def parameters():
 
     params.use_gpu = True
 
+    params.prune_random_sample = True
+
     params.image_sample_size = 22*16
     params.search_area_scale = 6
     params.border_mode = 'inside_major'

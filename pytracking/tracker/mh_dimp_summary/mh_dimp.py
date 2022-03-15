@@ -1,4 +1,5 @@
 #import pdb; pdb.set_trace()
+import random
 
 from pytracking.tracker.base import BaseTracker
 import torch
@@ -162,6 +163,9 @@ class MH_DiMP(BaseTracker):
 
         self.frame_num += 1
         self.debug_info['frame_num'] = self.frame_num
+
+        if self.params.prune_random_sample and len(self.mh_training_sample_set) > self.params.summary_size:
+            self.mh_prune_random_frame_id()
 
         # Convert image
         im = numpy_to_torch(image)
@@ -718,8 +722,9 @@ class MH_DiMP(BaseTracker):
         print([x.frame_ids for x in self.hypotheses])
         print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
 
-    def mh_update_sample_weights(self, sample_weights, previous_replace_ind, num_stored_samples, num_init_samples, sample_x, learning_rate):
-        pass
+    def mh_prune_random_frame_id(self):
+        frame_id = random.sample(list(self.mh_training_sample_set),1)[0]
+        self.mh_prune_frame_id(frame_id)
 
     def update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
         # Update weights and get replace ind
@@ -963,7 +968,6 @@ class MH_DiMP(BaseTracker):
             pred_module.min_filter_reg = self.params.filter_reg
         if self.params.get('filter_init_zero', False):
             self.net.classifier.filter_initializer = FilterInitializerZero(self.net.classifier.filter_size, feature_dim)
-
 
     def update_classifier(self, train_x, target_box, im_patch, learning_rate=None, scores=None):
         # Set flags and learning rate
