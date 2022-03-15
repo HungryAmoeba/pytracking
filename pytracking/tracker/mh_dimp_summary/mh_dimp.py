@@ -529,6 +529,7 @@ class MH_DiMP(BaseTracker):
         init_target_boxes = torch.cat(init_target_boxes.view(1, 4), 0).to(self.params.device)
         self.target_boxes = init_target_boxes.new_zeros(self.sample_memory_size, 4)
         self.target_boxes[:init_target_boxes.shape[0],:] = init_target_boxes
+        self.mh_initial_target_boxes = init_target_boxes
 
         #leave this empty initially
 
@@ -658,11 +659,15 @@ class MH_DiMP(BaseTracker):
             target_boxes = torch.zeros([num_training_samples, 4], device=self.params.device)
 
             # todo: vectorize this!?
+            # todo: look at the losses, do these updates matter?
             frame_ids = new_hypothesis.frame_ids
+            samples[:num_init_samples, ...] = self.mh_initial_training_samples
+            sample_weights[:num_init_samples, ...] = self.mh_initial_sample_weights
+            target_boxes[:num_init_samples, ...] = self.mh_initial_target_boxes
             for i, frame_id in enumerate(frame_ids):
-                samples[i, ...] = self.mh_training_sample_set[frame_id].sample
-                sample_weights[i, ...] = self.mh_training_sample_set[frame_id].weight
-                target_boxes[i, ...] = self.mh_training_sample_set[frame_id].target_box
+                samples[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].sample
+                sample_weights[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].weight
+                target_boxes[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].target_box
 
             num_iter = 2  # todo: make this smarter?
             plot_loss = self.params.debug > 0
