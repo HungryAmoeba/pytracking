@@ -661,12 +661,12 @@ class MH_DiMP(BaseTracker):
             # todo: vectorize this!?
             # todo: look at the losses, do these updates matter?
             frame_ids = new_hypothesis.frame_ids
-            samples[:num_init_samples, ...] = self.mh_initial_training_samples
+            samples[:num_init_samples, ...] = self.mh_initial_training_samples[0]
             sample_weights[:num_init_samples, ...] = self.mh_initial_sample_weights
             target_boxes[:num_init_samples, ...] = self.mh_initial_target_boxes
             for i, frame_id in enumerate(frame_ids):
-                samples[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].sample
-                sample_weights[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].weight
+                samples[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].sample[0]
+                sample_weights[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].weight[0]
                 target_boxes[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].target_box
 
             num_iter = 2  # todo: make this smarter?
@@ -699,17 +699,24 @@ class MH_DiMP(BaseTracker):
         if pruned_frame_id not in self.mh_training_sample_set:
             return
 
-        new_hypotheses = []
+        kept_hypotheses = []
         forget_inds = []
         for i, hypothesis in enumerate(self.hypotheses):
             if pruned_frame_id in hypothesis.frame_ids:
                 forget_inds.append(i)
                 continue
-            new_hypotheses.append(hypothesis)
+            kept_hypotheses.append(hypothesis)
 
-        # todo: for the degenerate case, rather than pruning hypotheses, just prune reference to the sample
-        if len(new_hypotheses) is 0:
-            print(f"Not pruning sample {pruned_frame_id} due to degenerate case")
+        # todo: this is a common degenerate case, what is the best way to handle this?
+        # possibilities: (1) ignore this id, (2) remove form all the hypotheses, but don't prune the hypotheses (future hypothese will hopefully get slightly more corrected)
+        # ideal case: use this as negative training example instead
+        if len(kept_hypotheses) is 0:
+            print(f"Partial pruning of {pruned_frame_id} due to degenerate case")
+            for i in forget_inds:
+                h = self.hypotheses[i]
+                h.frame_ids.remove(pruned_frame_id)
+
+            self.mh_training_sample_set.pop(pruned_frame_id, None)
             return
 
         # If we do prune, update global training memory counters
@@ -719,7 +726,7 @@ class MH_DiMP(BaseTracker):
                 self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
 
         self.mh_prune_training_sample_memory()
-        self.hypotheses = new_hypotheses
+        self.hypotheses = kept_hypotheses
 
         self.mh_training_sample_set.pop(pruned_frame_id, None)
 
