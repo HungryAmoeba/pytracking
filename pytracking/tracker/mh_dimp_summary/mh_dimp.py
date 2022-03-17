@@ -15,6 +15,8 @@ import ltr.data.bounding_box_utils as bbutils
 from ltr.models.target_classifier.initializer import FilterInitializerZero
 from ltr.models.layers import activation
 
+from pytracking.analysis.extract_results import calc_err_center, calc_iou_overlap
+
 #additional mode for k centers summary
 import pytracking.libs.kcenters as kc
 import pytracking.libs.visualization as vs
@@ -41,12 +43,18 @@ class MH_Node(object):
         self.frame_ids = set()
         self.scores = []
 
+        # extremum_summary related
+        self.extremum_threshold = 0
+
     def clone(self):
+        #todo: just deepcopy the whole object
         new_hypo = MH_Node()
         new_hypo.net = copy.deepcopy(self.net)
         new_hypo.target_filter = copy.deepcopy(self.target_filter)
         new_hypo.frame_ids = copy.deepcopy(self.frame_ids)
         new_hypo.mem_ids = copy.deepcopy(self.mem_ids)
+        new_hypo.scores = copy.deepcopy(self.scores)
+        new_hypo.extremum_threshold = self.extremum_threshold
         return new_hypo
 
 class MH_DiMP(BaseTracker):
@@ -143,9 +151,11 @@ class MH_DiMP(BaseTracker):
         new_hypothesis.target_filter = self.target_filter
         new_hypothesis.net = self.net
         new_hypothesis.mem_ids = set(range(self.num_init_samples[0]))
+        new_hypothesis.extremum_threshold = kc.threshold_cost(self.training_samples[0][:self.num_init_samples[0],...])
 
         self.hypotheses = []
         self.hypotheses.append(new_hypothesis)
+
 
         self.mh_training_sample_set = {}
 
@@ -158,7 +168,7 @@ class MH_DiMP(BaseTracker):
         out = {'time': time.time() - tic}
         return out
 
-    def track(self, image, manual_replace = -1, info: dict = None) -> dict:
+    def track(self, image, info: dict = None) -> dict:
         self.debug_info = {}
 
         self.frame_num += 1
@@ -222,7 +232,8 @@ class MH_DiMP(BaseTracker):
             target_box = self.get_iounet_box(self.pos, self.target_sz, sample_pos[scale_ind,:], sample_scales[scale_ind])
 
             # Update the classifier model
-            self.update_classifier(train_x, target_box, im_patches, learning_rate, s[scale_ind,...])
+            if not self.params.get('skip_update_classifier', False):
+                self.update_classifier(train_x, target_box, im_patches, learning_rate, s[scale_ind,...])
 
         # Set the pos of the tracker to iounet pos
         if self.params.get('use_iou_net', True) and flag != 'not_found' and hasattr(self, 'pos_iounet'):
@@ -248,6 +259,19 @@ class MH_DiMP(BaseTracker):
             output_state = [-1, -1, -1, -1]
         else:
             output_state = new_state.tolist()
+
+        oracle_feedback = self.params.get('use_oracle_feedback', True)
+        oracle_iou_threshold = self.params.get('oracle_iou_threshold', 0.85)
+        oracle_prec_threshold = self.params.get('oracle_prec_threshold', 5)
+
+        # todo: we can fake delays by looking at the whole gt history
+        if oracle_feedback:
+            pred_bb = torch.tensor(output_state)
+            gt = info["gt"]
+            iou = calc_iou_overlap(torch.tensor(gt).unsqueeze(0), pred_bb.unsqueeze(0))
+
+            if self.params.get('use_oracle_iou') and self.frame_num in self.mh_training_sample_set and iou < oracle_iou_threshold:
+                self.mh_prune_frame_id(self.frame_num)
 
         if self.summary_update:
             self.summary_update = False
@@ -595,6 +619,7 @@ class MH_DiMP(BaseTracker):
         for ts, x in zip(self.training_samples, train_x):
             ts[:x.shape[0],...] = x
 
+
         #don't make it all the first image!!!
 
         # don't do this for empty summary set
@@ -609,6 +634,124 @@ class MH_DiMP(BaseTracker):
             else:
                 self.training_samples[0][i] = train_x[0][i-self.num_init_samples[0]]
                 '''
+
+    def mh_update_memory_extremum(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
+
+        # Prune the worst-confidence until we have max number of hypotheses remaining
+        max_num_hypotheses = self.params.get("max_num_hypotheses", 8)
+        scores = torch.tensor([h.scores[-1] for h in self.hypotheses])
+        if len(self.hypotheses) > max_num_hypotheses:
+            top_k_scores, top_k_inds = torch.topk(scores, max_num_hypotheses)
+            new_hypotheses = [0]*max_num_hypotheses
+
+            # Decrement counter for training samples
+            # todo: this is inefficient
+            for i, h in enumerate(self.hypotheses):
+                if i not in top_k_inds:
+                    for frame_id in h.frame_ids:
+                        self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
+
+            for i, k in enumerate(top_k_inds):
+                new_hypotheses[i] = self.hypotheses[k]
+            self.hypotheses = new_hypotheses
+
+        # Create training sample
+        new_training_sample = TrainingSample()
+        new_training_sample.sample = sample_x
+        new_training_sample.weight = self.mh_online_sample_weight
+        new_training_sample.id = self.frame_num
+        new_training_sample.target_box = target_box.to(self.params.device)
+        img = im_patch.reshape(im_patch.size()[1:])
+        img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
+        new_training_sample.im_patch = img
+
+        new_frame_id = self.frame_num
+        #self.mh_training_sample_set[self.frame_num] = ts
+
+        # Update hypotheses
+        new_hypotheses = []
+        for hypothesis in self.hypotheses:
+            new_hypotheses.append(hypothesis)
+
+            # todo: big question, how do we initialize these? Should we be allowed to replace the initial sample?
+            # guessing no, maybe the first sample can be included and we always start with that as the seed
+            # Check to see if we should add sample to hypothesis
+            # for now, we ignore the initial set, we'll come back to this later
+            frame_ids = list(hypothesis.frame_ids)
+            num_online_samples = len(frame_ids)
+            samples = torch.zeros(torch.Size([num_online_samples]) + self.mh_initial_training_samples[0].shape[1:], device=self.params.device)
+            for i, frame_id in enumerate(frame_ids):
+                samples[i, ...] = self.mh_training_sample_set[frame_id].sample[0]
+
+            max_summary_size = self.params.get('summary_size', 35)
+            # todo: what should be going into this?
+            if hypothesis.extremum_threshold is 0:
+                replace_ind, threshold = kc.online_summary_update_index_extremum(samples, new_training_sample.sample[0], max_summary_size)
+            else:
+                replace_ind, threshold = kc.online_summary_update_index_extremum(samples, new_training_sample.sample[0], max_summary_size, threshold=hypothesis.extremum_threshold)
+
+            # Sample not added, no need to add a new hypothesis
+            if replace_ind < 0:
+                continue
+
+            # Add new hypothesis with the new sample
+            new_hypothesis = hypothesis.clone()
+            new_hypothesis.frame_ids.add(new_frame_id)
+
+            if threshold is not None:
+                new_hypothesis.extremum_threshold = threshold * self.params.get('summary_threshold_gamma', 2)
+
+            if new_frame_id not in self.mh_training_sample_set:
+                self.mh_training_sample_set[new_frame_id] = new_training_sample
+
+            # If was added (and not replaced)
+            if replace_ind > len(frame_ids) - 1:
+                samples = torch.cat((samples, new_training_sample.sample[0]), dim=0)
+                frame_ids.append(new_frame_id)
+            # If replaced a sample
+            else:
+                old_frame_id = frame_ids[replace_ind]
+                frame_ids[replace_ind] = new_frame_id
+                new_hypothesis.frame_ids.remove(old_frame_id)
+                samples[replace_ind, ...] = new_training_sample.sample[0]
+
+            for frame_id in new_hypothesis.frame_ids:
+                self.mh_training_sample_set[frame_id].num_supported_hypotheses += 1
+
+            num_online_samples = len(new_hypothesis.frame_ids)
+            num_init_samples = self.num_init_samples[0]
+            num_training_samples = num_init_samples + num_online_samples
+            samples = torch.cat((self.mh_initial_training_samples[0], samples), dim=0)
+            sample_weights = torch.zeros([num_training_samples], device=self.params.device)
+            target_boxes = torch.zeros([num_training_samples, 4], device=self.params.device)
+
+            # todo: vectorize this!?
+            # todo: look at the losses, do these updates matter?
+            sample_weights[:num_init_samples, ...] = self.mh_initial_sample_weights
+            target_boxes[:num_init_samples, ...] = self.mh_initial_target_boxes
+            for i, frame_id in enumerate(frame_ids):
+                samples[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].sample[0]
+                sample_weights[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].weight[0]
+                target_boxes[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].target_box
+
+            num_iter = 2  # todo: make this smarter?
+            plot_loss = self.params.debug > 0
+
+            # Run the filter optimizer module
+            with torch.no_grad():
+                new_hypothesis.target_filter, _, losses = new_hypothesis.net.classifier.filter_optimizer(
+                    new_hypothesis.target_filter,
+                    num_iter=num_iter,
+                    feat=samples,
+                    bb=target_boxes,
+                    sample_weight=sample_weights,
+                    compute_losses=plot_loss)
+            # todo: this seems dumb
+
+            new_hypotheses.append(new_hypothesis)
+        self.hypotheses = new_hypotheses
+
+        self.mh_prune_training_sample_memory()
 
     def mh_update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
 
@@ -731,6 +874,7 @@ class MH_DiMP(BaseTracker):
         self.mh_training_sample_set.pop(pruned_frame_id, None)
 
     def print_summary(self):
+        print("Current frame: ", self.frame_num)
         print([x.frame_ids for x in self.hypotheses])
         print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
 
@@ -990,7 +1134,10 @@ class MH_DiMP(BaseTracker):
         # Update the tracker memory
         if hard_negative_flag or self.frame_num % self.params.get('train_sample_interval', 1) == 0:
             #self.update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
-            self.mh_update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
+            if self.params.get('use_extremum_pruning', False):
+                self.mh_update_memory_extremum(TensorList([train_x]), target_box, im_patch, learning_rate)
+            else:
+                self.mh_update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
 
         # Decide the number of iterations to run
         num_iter = 0
@@ -1252,12 +1399,15 @@ class MH_DiMP(BaseTracker):
             self.visdom.register((image, box), 'Tracking', 1, 'Tracking')
 
     def return_summary_patches(self):
-        return self.summary_patches
+        #return self.summary_patches
+        return [self.mh_training_sample_set[frame_id].im_patch for frame_id in self.mh_training_sample_set]
 
     def return_summary_bbox(self):
-        start_ind = self.num_init_samples[0]
-        end_ind = self.online_start_ind[0]
-        return self.target_boxes[start_ind:end_ind]
+        #start_ind = self.num_init_samples[0]
+        #end_ind = self.online_start_ind[0]
+        #return self.target_boxes[start_ind:end_ind]
+        return [self.mh_training_sample_set[frame_id].target_box for frame_id in self.mh_training_sample_set]
+
     def return_bbox(self):
         return self.target_boxes
 

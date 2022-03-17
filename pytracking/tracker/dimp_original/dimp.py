@@ -430,7 +430,7 @@ class DiMP(BaseTracker):
     def update_memory(self, sample_x: TensorList, target_box, learning_rate = None):
         # Update weights and get replace ind
         replace_ind = self.update_sample_weights(self.sample_weights, self.previous_replace_ind, self.num_stored_samples, self.num_init_samples, learning_rate)
-        print(f"replace_ind is {replace_ind}, train_samp size is {self.training_samples.size()}")
+        #print(f"replace_ind is {replace_ind}, train_samp size is {self.training_samples.size()}")
         self.previous_replace_ind = replace_ind
 
         # Update sample and label memory
@@ -627,9 +627,15 @@ class DiMP(BaseTracker):
 
         if num_iter > 0:
             # Get inputs for the DiMP filter optimizer module
-            samples = self.training_samples[0][:self.num_stored_samples[0],...]
-            target_boxes = self.target_boxes[:self.num_stored_samples[0],:].clone()
-            sample_weights = self.sample_weights[0][:self.num_stored_samples[0]]
+            #todo: vv added num_init_samples
+            if self.params.get('online_only', False):
+                samples = self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0],...]
+                target_boxes = self.target_boxes[self.num_init_samples[0]:self.num_stored_samples[0],:].clone()
+                sample_weights = self.sample_weights[0][self.num_init_samples[0]:self.num_stored_samples[0]]
+            else:
+                samples = self.training_samples[0][:self.num_stored_samples[0],...]
+                target_boxes = self.target_boxes[:self.num_stored_samples[0],:].clone()
+                sample_weights = self.sample_weights[0][:self.num_stored_samples[0]]
 
             # Run the filter optimizer module
             with torch.no_grad():
