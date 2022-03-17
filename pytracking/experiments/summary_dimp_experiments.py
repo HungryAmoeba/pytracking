@@ -64,12 +64,22 @@ def VOT2020_test():
 
     return trackers, dataset
 
-def mh_fish_test():
-    #trackers = trackerlist('dimp_original', 'super_dimp', range(5)) + \
-    #           trackerlist('dimp_summary', 'super_dimp_15', range(5))
+def concept_drift_test():
+    trackers = trackerlist('dimp_original', 'super_dimp_baseline_only', range(5)) + \
+               trackerlist('dimp_original', 'super_dimp', range(5)) + \
+               trackerlist('dimp_original', 'super_dimp_online_only', range(5)) + \
+               trackerlist('dimp_original', 'super_dimp_online_only_10', range(5)) + \
+               trackerlist('dimp_original', 'super_dimp_online_only_1', range(5))
+    dataset = get_dataset('fish')
 
-    trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1)) + \
-               trackerlist('dimp_summary', 'super_dimp_15', range(1))
+    return trackers, dataset
+
+def mh_fish_test():
+    trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
+    #trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1))
+    # trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1)) + \
+    #            trackerlist('dimp_original', 'super_dimp', range(1)) + \
+    #            trackerlist('mh_dimp_summary', 'super_dimp_baseline_set', range(1))
 
 
     dataset = get_dataset('fish')

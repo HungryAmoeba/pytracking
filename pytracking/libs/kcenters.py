@@ -116,19 +116,49 @@ def online_summary_update(summary_set, observation, k):
     summary_set = extremumsummary(summary_set, k)
   return summary_set
 
-def online_summary_update_index(summary_set, observation, k, threshold = None):
+def k_online_summary_update_index(summary_set, observation, k, threshold = None, indices_to_keep = None):
+    """
+    summary_set torch tensor, first dim is number of elements
+    k is the maximum summary size
+    """
+    summary_size = summary_set.size()[0]
+
+    # Initialize a threshold cost if none-existent
+    if threshold is None and summary_size > 1:
+        threshold = threshold_cost(summary_set)
+
+    # Added without replacement
+    if score_observation(summary_set, observation) > threshold and summary_size < k:
+        return summary_size, threshold
+
+    # Added with replacement
+    # todo
+
+    # Not added
+    return -1, threshold
+
+def online_summary_update_index_extremum(summary_set, observation, k, threshold = None):
     '''Returns the index of the entry in the original summary set to be replaced when
     the summary size == k upon addition of the new observation '''
-    if threshold is None:
+    length = summary_set.size()[0]
+
+    # If the set is empty, add the observation
+    if length is 0:
+        return length, threshold
+
+    if threshold is None and length > 1:
         threshold = threshold_cost(summary_set)
         #print(f"threshold is {threshold}")
     #threshold = threshold_cost(summary_set)
-    length = summary_set.size()[0]
-    if length < k:
-        return length, threshold
-    if score_observation(summary_set, observation) > threshold:
-      #add to summary set
 
+    score = score_observation(summary_set, observation)
+    print("score: ", score)
+    print("threshold: ", threshold)
+    if score > threshold and length < k:
+        return length, threshold
+
+    if score > threshold:
+      #add to summary set
       #doing the list comprehension here might be superfluous
       dummy_summary_set = [x for x in torch.cat((summary_set, observation), dim = 0)]
     else:
@@ -146,8 +176,6 @@ def online_summary_update_index(summary_set, observation, k, threshold = None):
       print(f"the index_to_remove is {index_to_remove} \n ________________")'''
 
       return index_to_remove.pop(), threshold #, dummy_summary_set
-
-
 
     return -1, threshold
 

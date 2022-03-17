@@ -9,35 +9,19 @@ def parameters():
 
     params.use_gpu = True
 
-    # Multiple-hypothesis parameters
-    params.prune_random_sample = True
-    params.max_num_hypotheses = 4 # will actually be twice this
-    params.use_extremum_pruning = True
-    params.summary_size = 35
-    params.summary_rel_weight = .5
-    params.summary_threshold_gamma = 1.1
-
-    # Oracle parameters
-    params.interactive = True
-    params.use_oracle_feedback = True
-    params.use_oracle_iou = True
-    params.use_oracle_prec = False
-    params.oracle_iou_threshold = 0.85
-    params.oracle_prec_threshold = 5
-
     params.image_sample_size = 22*16
     params.search_area_scale = 6
     params.border_mode = 'inside_major'
     params.patch_max_scale_change = 1.5
 
     # Learning parameters
-    params.sample_memory_size = 50 #this gets overwritten in  init_target_boxes and is obsolete
+    params.sample_memory_size = 50
     params.learning_rate = 0.01
     params.init_samples_minimum_weight = 0.25
     params.train_skipping = 20
 
     # Net optimization params
-    params.update_classifier = True
+    params.update_classifier = False
     params.net_opt_iter = 10
     params.net_opt_update_iter = 2
     params.net_opt_hn_iter = 1

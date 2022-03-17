@@ -284,6 +284,8 @@ class Tracker:
 
             info = seq.frame_info(frame_num)
             info['previous_output'] = prev_output
+            info["gt"] = seq.ground_truth_rect[frame_num]
+            self.gt_state = seq.ground_truth_rect[frame_num]
 
             if interactive:
                 if ui_control.mode == 'lock':
@@ -292,7 +294,7 @@ class Tracker:
                     tracker.set_lock_false()
 
             out = tracker.track(image, info)
-            #import pdb; pdb.set_trace()
+
             #tracker is a DiMP object -- not in MultiObjectWrapper
             prev_output = OrderedDict(out)
             _store_outputs(out, {'time': time.time() - start_time})
@@ -315,8 +317,8 @@ class Tracker:
                         tracker.delete_summary_num(index)
                         summary_ui_controls[index].replace_summary = False
 
-                summary_images = np.array(tracker.return_summary_patches())
-                summary_bbox = np.array(tracker.return_summary_bbox().cpu())
+                summary_images = np.array([patch.detach().cpu().numpy() for patch in tracker.return_summary_patches()])
+                summary_bbox = np.array([bbox.detach().cpu().numpy() for bbox in tracker.return_summary_bbox()])
                 for index, img_bbox in enumerate(zip(summary_images,summary_bbox)):
                     bbox = img_bbox[1]
                     img = img_bbox[0]
@@ -372,10 +374,6 @@ class Tracker:
                         ui_control.mode = 'track'
                     else:
                         ui_control.mode = 'lock'
-
-
-
-
 
         for key in ['target_bbox', 'segmentation']:
             if key in output and len(output[key]) <= 1:

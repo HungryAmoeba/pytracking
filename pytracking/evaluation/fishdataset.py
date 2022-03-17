@@ -49,8 +49,8 @@ class FishDataset(BaseDataset):
         return len(self.sequence_list)
 
     def _get_sequence_list(self):
-        sequence_list= ['kukulya_shark_30fps_480p',
-                        'hanlon_octopus_30fps_480p1_short',
+        sequence_list= ['hanlon_octopus_30fps_480p1_short',
+                        'kukulya_shark_30fps_480p',
                         'hanlon_octopus_30fps_480p5_st',
                         'hanlon_octopus_30fps_480p6',
                         'hanlon_octopus_30fps_480p9',
@@ -61,7 +61,14 @@ class FishDataset(BaseDataset):
                         'mesobot_larvacean_30fps_480p3',
                         'mesobot_solmissus_30fps_480p0',
                         'mesobot_solmissus_30fps_480p1',
-                        'mooney_dpealeii_30fps_480p1',
-                        'mooney_lforbesi_30fps_480p_short']
+                        'girdhar_blue_tang_30fps_480p_usvi_GOPR1463',
+                        'girdhar_blue_tang_30fps_480p_usvi_GOPR1473',
+                        'girdhar_boxfish_30fps_480p_usvi_GOPR1466',
+                        'girdhar_gray_angelfish_30fps_480p_usvi_GOPR1482',
+                        'girdhar_lionfish_30fps_480p_usvi_GOPR1455',
+                        'girdhar_parrotfish_30fps_480p_usvi_GOPR1464',
+                        'girdhar_parrotfish_30fps_480p_usvi_GOPR1480',
+                        'girdhar_parrotfish_30fps_480p_usvi_GOPR1481',
+                        'girdhar_striped_fish_30fps_480p_usvi_GOPR1472']
 
         return sequence_list
