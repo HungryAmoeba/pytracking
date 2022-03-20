@@ -1,4 +1,6 @@
-#import pdb; pdb.set_trace()
+"""
+TODO: Clean up code, right now prefix: xs = extremum summary functions, mh = multi-hypothesis functions
+"""
 import random
 
 from pytracking.tracker.base import BaseTracker
@@ -9,13 +11,15 @@ import time
 from pytracking import dcf, TensorList
 from pytracking.features.preprocessing import numpy_to_torch
 from pytracking.utils.plotting import show_tensor, plot_graph
-from pytracking.features.preprocessing import sample_patch_multiscale, sample_patch_transformed
+from pytracking.features.preprocessing import sample_patch_multiscale, sample_patch_transformed, sample_patch
 from pytracking.features import augmentation
 import ltr.data.bounding_box_utils as bbutils
 from ltr.models.target_classifier.initializer import FilterInitializerZero
 from ltr.models.layers import activation
 
 from pytracking.analysis.extract_results import calc_err_center, calc_iou_overlap
+
+import cv2 as cv
 
 #additional mode for k centers summary
 import pytracking.libs.kcenters as kc
@@ -61,6 +65,10 @@ class MH_DiMP(BaseTracker):
 
     multiobj_mode = 'parallel'
 
+    def _read_image(self, image_file: str):
+        im = cv.imread(image_file)
+        return cv.cvtColor(im, cv.COLOR_BGR2RGB)
+
     def initialize_features(self):
         if not getattr(self, 'features_initialized', False):
             self.params.net.initialize()
@@ -86,10 +94,12 @@ class MH_DiMP(BaseTracker):
 
         # Initialize dashboard image holder
         self.summary_patches = torch.zeros(self.params.get('summary_size', 15), self.params.image_sample_size, self.params.image_sample_size, 3)
-        self.mh_global_patches = {}
+        self.ref_patches = torch.zeros(self.params.get('sample_memory_size'), self.params.image_sample_size, self.params.image_sample_size, 3)
+
         self.summary_update = False
         self.summary_prev_ind = -1
         self.summary_stored_samples = 0
+
         self.del_summary_num = -1
         self.summary_size = [self.params.get('summary_size', 15)]
         self.lock_mode = False
@@ -146,27 +156,206 @@ class MH_DiMP(BaseTracker):
         if self.params.get('use_iou_net', True):
             self.init_iou_net(init_backbone_feat)
 
-        # Initialize multi-hypothesis trackers
-        new_hypothesis = MH_Node()
-        new_hypothesis.target_filter = self.target_filter
-        new_hypothesis.net = self.net
-        new_hypothesis.mem_ids = set(range(self.num_init_samples[0]))
-        new_hypothesis.extremum_threshold = kc.threshold_cost(self.training_samples[0][:self.num_init_samples[0],...])
+        # If used, initialize multi-hypothesis trackers
+        if self.params.get("use_mh", False):
+            new_hypothesis = MH_Node()
+            new_hypothesis.target_filter = self.target_filter
+            new_hypothesis.net = self.net
+            new_hypothesis.mem_ids = set(range(self.num_init_samples[0]))
+            new_hypothesis.extremum_threshold = kc.threshold_cost(self.training_samples[0][:self.num_init_samples[0],...])
 
-        self.hypotheses = []
-        self.hypotheses.append(new_hypothesis)
+            self.hypotheses = []
+            self.hypotheses.append(new_hypothesis)
 
+            self.mh_training_sample_set = {}
 
-        self.mh_training_sample_set = {}
+        # If used, initialize online active summaries
+        if self.params.get("use_active_online_summary", False):
+            assert(self.summary_size[0] > 0)
 
-        # Used to select images in the memory buffer given frame numbers
-        self.mh_mem_ids_to_frames = torch.tensor([0] * self.summary_size[0])
+            self.initial_net = copy.deepcopy(self.net)
+            self.initial_target_filter = self.target_filter
 
-        # Tracks frames still being referenced by trackers
-        self.frames_reference_counters = torch.tensor([0] * self.summary_size[0])
+            # Start with the first image for extremum summaries
+            self.training_samples[0][self.num_init_samples[0], ...] = self.training_samples[0][0, ...]
+            self.target_boxes[self.num_init_samples[0],...] = self.target_boxes[0, ...]
+            self.summary_patches[0,...] = self.ref_patches[0,...]
+            self.sample_weights[0][self.num_init_samples[0]] = self.sample_weights[0][0]
+            self.num_stored_samples[0] += 1
+
+            self.summary_updated = False
+
+            if self.params.get("use_active_online_extremum", False):
+                if self.params.get("dist_func", "cosine_dist") is "cosine_dist":
+                    self.dist_func = kc.cosine_dist
+                elif self.params.get("dist_func") is "l2_normalised_dist":
+                    self.dist_func = kc.l2_normalised_dist
+                else:
+                    self.dist_func = kc.l2_dist
+
+                self.extremum_summary_threshold = kc.threshold_cost(self.training_samples[0][:self.num_init_samples[0],...],
+                                                                    distance_function=self.dist_func)
+
+        # If used, initialize global trained networks (uses ground truth information)
+        if self.params.get("use_global_trainer", False):
+
+            # Extremum summary sample selection (greedy and global)
+            if self.params.get("use_global_extremum", True):
+                print("Setting up global extremum samples...")
+                summary_samples = torch.zeros((self.summary_size[0], *self.training_samples[0].shape[1:]), device=self.params.device)
+                target_boxes = torch.zeros((self.summary_size[0],4), device=self.params.device)
+                summary_patches = self.summary_patches.new_zeros(self.summary_patches.size())
+                summary_weights = torch.zeros(self.summary_size[0], device=self.params.device)
+
+                # start by adding in the first sample
+                summary_samples[0,...] = self.training_samples[0][0]
+                target_boxes[0,...] = self.target_boxes[0]
+                summary_patches[0] = self.ref_patches[0]
+                summary_weights[0] = self.sample_weights[0][0]
+
+                curr_summary_size = 1
+                if self.params.get("dist_func", "cosine_dist") is "cosine_dist":
+                    dist_func = kc.cosine_dist
+                elif self.params.get("dist_func") is "l2_normalised_dist":
+                    dist_func = kc.l2_normalised_dist
+                else:
+                    dist_func = kc.l2_dist
+
+                threshold = kc.threshold_cost(self.training_samples[0][:self.num_init_samples[0]], distance_function=dist_func)
+                thresholds = []
+                thresholds.append(threshold)
+
+                sample_inds = [0] * self.summary_size[0]
+
+                for i, im_info in enumerate(zip(info["all_frames"], info["all_bboxes"])):
+                    im_path, bbox = im_info
+                    image = self._read_image(im_path)
+                    im = numpy_to_torch(image)
+
+                    sample, target_box, im_patches = self.get_sample_and_box(im, bbox)
+                    replace_ind, _ = kc.online_summary_update_index_extremum(summary_samples[:curr_summary_size,...],
+                                                                             sample, self.summary_size[0],
+                                                                             threshold=threshold,
+                                                                             distance_function=dist_func)
+
+                    if replace_ind > -1:
+                        summary_samples[replace_ind,...] = sample
+                        target_boxes[replace_ind,...] = target_box
+                        img = im_patches.reshape(im_patches.size()[1:])
+                        img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
+                        summary_patches[replace_ind,...] = img
+                        summary_weights[replace_ind] = self.sample_weights[0][0] # todo: make this a parameter
+
+                        if curr_summary_size < self.summary_size[0]:
+                            curr_summary_size += 1
+
+                        if self.params.get("use_mean_score", True):
+                            threshold = kc.threshold_cost(summary_samples[:curr_summary_size,...], distance_function=dist_func)
+                        else:
+                            threshold = self.params.get("summary_threshold_gamma", 1.005) * threshold
+                        thresholds.append(threshold)
+
+                        sample_inds[replace_ind] = i
+
+                print("Used inds: ", sample_inds)
+                print("Training...")
+                print(thresholds)
+                self.training_samples[0] = torch.cat((self.training_samples[0][:self.num_init_samples[0],...], summary_samples[:curr_summary_size]), 0)
+                self.target_boxes = torch.cat((self.target_boxes[:self.num_init_samples[0],...], target_boxes[:curr_summary_size]), 0)
+                self.summary_patches = summary_patches[:curr_summary_size]
+                self.sample_weights[0] = torch.cat((self.sample_weights[0][:self.num_init_samples[0],...], summary_weights[:curr_summary_size]), 0)
+
+            # Uniform random sampling approach
+            else:
+
+                total_frames = len(info["all_frames"])
+                sample_inds = random.sample(range(total_frames), self.params.get("sample_memory_size",50)-self.num_init_samples[0])
+                sample_inds.sort()
+
+                print("Used frames: ", sample_inds)
+
+                # Construct training sample set
+                for i, sample_ind in enumerate(sample_inds):
+                    im_path = info["all_frames"][sample_ind]
+                    state = info["all_bboxes"][sample_ind]
+
+                    image = self._read_image(im_path)
+                    im = numpy_to_torch(image)
+
+                    sample, target_box, im_patches = self.get_sample_and_box(im, state)
+
+                    self.training_samples[0][i+self.num_init_samples[0], ...] = sample
+                    self.target_boxes[i+self.num_init_samples[0], ...] = target_box
+                    img = im_patches.reshape(im_patches.size()[1:])
+                    img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
+                    self.summary_patches[i, ...] = img
+                    self.ref_patches[i+self.num_init_samples[0],...] = img
+                    self.sample_weights[0][i+self.num_init_samples[0]] = self.sample_weights[0][0] #todo: implement this correctly
+
+            num_iter = 2  # todo: make this smarter?
+            plot_loss = self.params.debug > 0
+
+            # Run the filter optimizer module
+            with torch.no_grad():
+                self.target_filter, _, losses = self.net.classifier.filter_optimizer(
+                    self.target_filter,
+                    num_iter=num_iter,
+                    feat=self.training_samples[0],
+                    bb=self.target_boxes,
+                    sample_weight=self.sample_weights[0],
+                    compute_losses=plot_loss)
 
         out = {'time': time.time() - tic}
         return out
+
+    def get_sample_and_box(self, im, bbox):
+        # Convert image to latent sample and gt bbox into the correct sampling coords
+
+        pos = torch.Tensor([bbox[1] + (bbox[3] - 1) / 2, bbox[0] + (bbox[2] - 1) / 2])
+        target_sz = torch.Tensor([bbox[3], bbox[2]])
+
+        image_sz = torch.Tensor([im.shape[2], im.shape[3]])
+        sz = self.params.image_sample_size
+        sz = torch.Tensor([sz, sz] if isinstance(sz, int) else sz)
+        if self.params.get('use_image_aspect_ratio', False):
+            sz = image_sz * sz.prod().sqrt() / image_sz.prod().sqrt()
+            stride = self.params.get('feature_stride', 32)
+            sz = torch.round(sz / stride) * stride
+        img_sample_sz = sz
+
+        search_area = torch.prod(target_sz * self.params.search_area_scale).item()
+        target_scale = math.sqrt(search_area) / img_sample_sz.prod().sqrt()
+
+        # Compute augmentation size
+        aug_expansion_factor = self.params.get('augmentation_expansion_factor', None)
+        aug_expansion_sz = self.img_sample_sz.clone()
+        aug_output_sz = None
+        if aug_expansion_factor is not None and aug_expansion_factor != 1:
+            aug_expansion_sz = (self.img_sample_sz * aug_expansion_factor).long()
+            aug_expansion_sz += (aug_expansion_sz - self.img_sample_sz.long()) % 2
+            aug_expansion_sz = aug_expansion_sz.float()
+            aug_output_sz = img_sample_sz.long().tolist()
+
+        #todo: this should simply use extract backbone, but it's not working for some reason
+        global_shift = torch.zeros(2)
+        transforms = [augmentation.Identity(aug_output_sz, global_shift.long().tolist())]
+        im_patches = sample_patch_transformed(im, pos, target_scale, aug_expansion_sz, transforms)
+
+        #im_patches = sample_patch_transformed(im, pos, target_scale * self.params.scale_factors, img_sample_sz, transforms)
+
+        # backbone_feat, sample_coords, im_patches = self.extract_backbone_features(im, pos,
+        #                                                                           target_scale * self.params.scale_factors,
+        #                                                                           img_sample_sz)
+        with torch.no_grad():
+            backbone_feat = self.net.extract_backbone(im_patches)
+
+        sample = self.get_classification_features(backbone_feat)
+
+        sample_scale = target_scale
+        sample_pos = pos.round()
+        target_box = self.get_iounet_box(pos, target_sz, sample_pos, sample_scale)
+
+        return sample, target_box, im_patches
 
     def track(self, image, info: dict = None) -> dict:
         self.debug_info = {}
@@ -174,16 +363,23 @@ class MH_DiMP(BaseTracker):
         self.frame_num += 1
         self.debug_info['frame_num'] = self.frame_num
 
-        if self.params.prune_random_sample and len(self.mh_training_sample_set) > self.params.summary_size:
-            self.mh_prune_random_frame_id()
+        if self.params.get("use_oracle_feedback", False):
+            self.ground_truth_bbox = info['gt']
 
         # Convert image
         im = numpy_to_torch(image)
 
-        print("Num hypo: ", len(self.hypotheses))
-        print("Num samples: ", len(self.mh_training_sample_set))
-        print([x.frame_ids for x in self.hypotheses])
-        print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
+        if self.params.get("use_mh") and \
+                self.params.prune_random_sample and \
+                len(self.mh_training_sample_set) > self.params.summary_size:
+            self.mh_prune_random_frame_id()
+
+        # Print useful multi-hypothesis tracking information
+        if self.params.get("use_mh", True):
+            print("Num hypo: ", len(self.hypotheses))
+            print("Num samples: ", len(self.mh_training_sample_set))
+            print([x.frame_ids for x in self.hypotheses])
+            print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
 
         # ------- LOCALIZATION ------- #
 
@@ -192,17 +388,19 @@ class MH_DiMP(BaseTracker):
                                                                       self.target_scale * self.params.scale_factors,
                                                                       self.img_sample_sz)
         # Extract classification features
-        #test_x = self.get_classification_features(backbone_feat)
-
-        self.mh_get_classification_features(backbone_feat)
+        if not self.params.get("use_mh", True):
+            test_x = self.get_classification_features(backbone_feat)
+        else:
+            self.mh_get_classification_features(backbone_feat)
 
         # Location of sample
         sample_pos, sample_scales = self.get_sample_location(sample_coords)
 
         # Compute classification scores
-        #scores_raw = self.classify_target(test_x)
-
-        scores_raw, test_x = self.mh_classify_target()
+        if not self.params.get("use_mh", True):
+            scores_raw = self.classify_target(test_x)
+        else:
+            scores_raw, test_x = self.mh_classify_target()
 
         # Localize the target
         translation_vec, scale_ind, s, flag = self.localize_target(scores_raw, sample_pos, sample_scales)
@@ -260,12 +458,10 @@ class MH_DiMP(BaseTracker):
         else:
             output_state = new_state.tolist()
 
-        oracle_feedback = self.params.get('use_oracle_feedback', True)
-        oracle_iou_threshold = self.params.get('oracle_iou_threshold', 0.85)
-        oracle_prec_threshold = self.params.get('oracle_prec_threshold', 5)
-
         # todo: we can fake delays by looking at the whole gt history
-        if oracle_feedback:
+        if self.params.get('use_mh') and self.params.get('use_oracle_feedback', False):
+            oracle_iou_threshold = self.params.get('oracle_iou_threshold', 0.85)
+            oracle_prec_threshold = self.params.get('oracle_prec_threshold', 5)
             pred_bb = torch.tensor(output_state)
             gt = info["gt"]
             iou = calc_iou_overlap(torch.tensor(gt).unsqueeze(0), pred_bb.unsqueeze(0))
@@ -516,6 +712,9 @@ class MH_DiMP(BaseTracker):
 
         # Extract augmented image patches
         im_patches = sample_patch_transformed(im, self.init_sample_pos, self.init_sample_scale, aug_expansion_sz, self.transforms)
+        for i, img in enumerate(im_patches):
+            im_patch = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
+            self.ref_patches[i,...] = im_patch
 
         #store the initial image training_patches
 
@@ -618,7 +817,6 @@ class MH_DiMP(BaseTracker):
 
         for ts, x in zip(self.training_samples, train_x):
             ts[:x.shape[0],...] = x
-
 
         #don't make it all the first image!!!
 
@@ -873,14 +1071,59 @@ class MH_DiMP(BaseTracker):
 
         self.mh_training_sample_set.pop(pruned_frame_id, None)
 
-    def print_summary(self):
+    def mh_prune_random_frame_id(self):
+        frame_id = random.sample(list(self.mh_training_sample_set),1)[0]
+        self.mh_prune_frame_id(frame_id)
+
+    def mh_print_summary(self):
         print("Current frame: ", self.frame_num)
         print([x.frame_ids for x in self.hypotheses])
         print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
 
-    def mh_prune_random_frame_id(self):
-        frame_id = random.sample(list(self.mh_training_sample_set),1)[0]
-        self.mh_prune_frame_id(frame_id)
+    def xs_update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
+        # Update weights and get replace ind
+        self.summary_updated = False
+        sample = sample_x[0]
+        summary_samples = self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0],...]
+        replace_ind, _ = kc.online_summary_update_index_extremum(summary_samples,
+                                                                 sample, self.summary_size[0],
+                                                                 threshold=self.extremum_summary_threshold,
+                                                                 distance_function=self.dist_func)
+        if replace_ind > -1:
+            # Use oracle for active learning, do it after extremum
+            if self.params.get("use_oracle_feedback", False):
+
+                # Throw out if the predicted bounding box is pretty far off
+                pred_bbox = torch.cat((self.pos[[1, 0]] - (self.target_sz[[1, 0]] - 1) / 2, self.target_sz[[1, 0]]))
+                oracle_iou_threshold = self.params.get('oracle_iou_threshold', 0.85)
+                oracle_prec_threshold = self.params.get('oracle_prec_threshold', 5)
+
+                gt = self.ground_truth_bbox
+                iou = calc_iou_overlap(torch.tensor(gt).unsqueeze(0), pred_bbox.unsqueeze(0))
+
+                if self.params.get('use_oracle_iou') and iou < oracle_iou_threshold:
+                    return
+
+            self.summary_updated = True
+
+            self.training_samples[0][self.num_init_samples[0] + replace_ind, ...] = sample
+            self.target_boxes[self.num_init_samples[0] + replace_ind, ...] = target_box
+            img = im_patch.reshape(im_patch.size()[1:])
+            img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
+            self.summary_patches[replace_ind, ...] = img
+            self.sample_weights[0][self.num_init_samples[0] + replace_ind] = self.sample_weights[0][0] # todo: make this a parameter
+
+            if self.num_stored_samples[0] < self.num_init_samples[0] + self.summary_size[0]:
+                self.num_stored_samples[0] += 1
+
+            if self.params.get("use_mean_score", True):
+                self.extremum_summary_threshold = kc.threshold_cost(self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0],...],
+                                              distance_function=self.dist_func)
+            else:
+                self.extremum_summary_threshold *= self.params.get("summary_threshold_gamma", 1.005)
+
+            num_summary_samples = self.num_stored_samples[0] - self.num_init_samples[0]
+            print(f"Added: summary size: {num_summary_samples}, frame {self.frame_num}, thresh: {self.extremum_summary_threshold}")
 
     def update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
         # Update weights and get replace ind
@@ -914,7 +1157,6 @@ class MH_DiMP(BaseTracker):
             # ANS: Yes, you will use it in the active setting, when you reach far back into history and prune things
 
             online_replace_ind = summary_replace_ind - self.num_init_samples[0]
-            frame_num = self.mh_mem_ids_to_frames[online_replace_ind]
 
             # Add new hypotheses and train them
             new_hypotheses = []
@@ -1016,7 +1258,6 @@ class MH_DiMP(BaseTracker):
         inside_offset = (inside_ratio - 0.5) * self.target_sz
         self.pos = torch.max(torch.min(new_pos, self.image_sz - inside_offset), inside_offset)
 
-
     def get_iounet_box(self, pos, sz, sample_pos, sample_scale):
         """All inputs in original image coordinates.
         Generates a box in the cropped image sample reference frame, in the format used by the IoUNet."""
@@ -1024,7 +1265,6 @@ class MH_DiMP(BaseTracker):
         box_sz = sz / sample_scale
         target_ul = box_center - (box_sz - 1) / 2
         return torch.cat([target_ul.flip((0,)), box_sz.flip((0,))])
-
 
     def init_iou_net(self, backbone_feat):
         # Setup IoU net and objective
@@ -1133,11 +1373,14 @@ class MH_DiMP(BaseTracker):
 
         # Update the tracker memory
         if hard_negative_flag or self.frame_num % self.params.get('train_sample_interval', 1) == 0:
-            #self.update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
-            if self.params.get('use_extremum_pruning', False):
+            if self.params.get("use_active_online_summary", False) and self.params.get("use_active_online_extremum", False):
+                self.xs_update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
+            elif self.params.get("use_mh", False) and self.params.get('use_extremum_pruning', False):
                 self.mh_update_memory_extremum(TensorList([train_x]), target_box, im_patch, learning_rate)
-            else:
+            elif self.params.get("use_mh", False):
                 self.mh_update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
+            else:
+                self.update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
 
         # Decide the number of iterations to run
         num_iter = 0
@@ -1146,8 +1389,8 @@ class MH_DiMP(BaseTracker):
             num_iter = self.params.get('net_opt_hn_iter', None)
         elif low_score_th is not None and low_score_th > scores.max().item():
             num_iter = self.params.get('net_opt_low_iter', None)
-        elif self.summary_update and not self.in_default:
-            num_iter = self.params.get('summary_update_num_iter', 0)
+        elif self.summary_update:
+            num_iter = self.params.get('summary_update_num_iter', 2)
             #print(f"Num iter is {num_iter} due to summary update")
         elif (self.frame_num - 1) % self.params.train_skipping == 0:
             num_iter = self.params.get('net_opt_update_iter', None)
@@ -1155,9 +1398,10 @@ class MH_DiMP(BaseTracker):
 
         plot_loss = self.params.debug > 0
 
-        # ensure that you're passing in the right things to here!!
-        # TODO: vv deactivated this portion, should I put this back?
-        num_iter = 0
+        # Multi-hypothesis has its own way of updating all the filters
+        if self.params.get("use_mh", False):
+            num_iter = 0
+
         if num_iter > 0:
             # Get inputs for the DiMP filter optimizer module
             samples = self.training_samples[0][:self.num_stored_samples[0],...]
@@ -1171,7 +1415,6 @@ class MH_DiMP(BaseTracker):
                                                                                      bb=target_boxes,
                                                                                      sample_weight=sample_weights,
                                                                                      compute_losses=plot_loss)
-                # TODO: Update all the classifiers hypothesis tracks, eek!
             if plot_loss:
                 if isinstance(losses, dict):
                     losses = losses['train']
@@ -1399,14 +1642,20 @@ class MH_DiMP(BaseTracker):
             self.visdom.register((image, box), 'Tracking', 1, 'Tracking')
 
     def return_summary_patches(self):
-        #return self.summary_patches
-        return [self.mh_training_sample_set[frame_id].im_patch for frame_id in self.mh_training_sample_set]
+        if self.params.get("use_mh", True):
+            return [self.mh_training_sample_set[frame_id].im_patch for frame_id in self.mh_training_sample_set]
+        else:
+            return self.summary_patches
+            #return self.ref_patches[:self.summary_size[0]]
 
     def return_summary_bbox(self):
-        #start_ind = self.num_init_samples[0]
-        #end_ind = self.online_start_ind[0]
-        #return self.target_boxes[start_ind:end_ind]
-        return [self.mh_training_sample_set[frame_id].target_box for frame_id in self.mh_training_sample_set]
+        if self.params.get("use_mh", True):
+            return [self.mh_training_sample_set[frame_id].target_box for frame_id in self.mh_training_sample_set]
+        else:
+            start_ind = self.num_init_samples[0]
+            end_ind = self.online_start_ind[0]
+            return self.target_boxes[start_ind:end_ind]
+            #return self.target_boxes[:self.summary_size[0]]
 
     def return_bbox(self):
         return self.target_boxes

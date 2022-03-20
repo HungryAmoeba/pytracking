@@ -255,6 +255,9 @@ class Tracker:
             cv.setMouseCallback(display_name, ui_control.mouse_callback)
 
         start_time = time.time()
+        init_info["all_bboxes"] = seq.ground_truth_rect
+        init_info["all_frames"] = seq.frames
+
         out = tracker.initialize(image, init_info)
         if out is None:
             out = {}

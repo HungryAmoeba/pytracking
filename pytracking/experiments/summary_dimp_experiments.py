@@ -74,13 +74,32 @@ def concept_drift_test():
 
     return trackers, dataset
 
+def global_summary_fish_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_global_x_mean_l2', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_global_x_mean_cd', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_global_x_gamma1_01_l2', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_global_x_gamma1_01_cd', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_global_x_gamma1_005_l2', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_global_x_gamma1_005_cd', range(5))
+    dataset = get_dataset('fish')
+    return trackers, dataset
+
+def online_summary_fish_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_l2', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_cd', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_005_l2', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_005_cd', range(5))
+    dataset = get_dataset('fish')
+    return trackers, dataset
+
 def mh_fish_test():
-    trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
-    #trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1))
+    #trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_cd', range(1))
     # trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1)) + \
     #            trackerlist('dimp_original', 'super_dimp', range(1)) + \
     #            trackerlist('mh_dimp_summary', 'super_dimp_baseline_set', range(1))
-
 
     dataset = get_dataset('fish')
 
