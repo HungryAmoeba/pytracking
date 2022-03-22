@@ -1,6 +1,103 @@
 import torch
 import numpy as np
 
+"""
+Module is based on functions defined in Girdhar et al. ICRA 2012
+https://www.cim.mcgill.ca/~mrl/pubs/girdhar/icra2012.pdf
+"""
+
+def get_summary_score(summary, observation, dist_func="l2_dist"):
+    # observation's distance to nearest point in the summary set
+    # dist_function options are l2, cos_dist, or norm_l2 (not yet implemented)
+    # summary is an KxMxNxB tensor, containing K observations
+    # observation is a 1xMxNxB tensor, containing 1 obs unsqueezed
+    # returns the distance, index of the minimum, and a 1xK row vector of distances
+    summary_vec = summary.view(summary.shape[0], -1)
+    observation_vec = observation.view(1, -1)
+    if dist_func == "l2_dist":
+        dists = torch.cdist(summary_vec, observation_vec, p=2.0)
+
+    elif dist_func == "cosine_dist":
+        dists = 1-torch.cosine_similarity(summary_vec, observation_vec)
+
+    else:
+        raise NotImplementedError(f"selected dist_func {dist_func} not supported")
+    min_dist, min_ind = torch.min(dists, dim=0)
+    return min_dist, min_ind, dists
+
+def get_mean_summary_score(summary, dist_func="l2_dist", dist_matrix=None):
+    # summary is a KxMxNxB tensor, with K observations
+    # if distance matrix is precomputed (expected a KxK symmetric distance matrix)
+    # returns the mean summary score, and the matrix of pairwise distances for memoization
+    if summary.shape[0] <= 1:
+        return 0, torch.tensor([0])
+
+    summary_vec = summary.view(summary.shape[0], -1)
+    if dist_matrix is None:
+        if dist_func == "l2_dist":
+            dist_matrix = torch.cdist(summary_vec, summary_vec, p=2.0)
+        elif dist_func == "cosine_dist":
+            # batched cosine_similarity trick from here: https://zablo.net/blog/post/pytorch-13-features-you-should-know/
+            dist_matrix = 1-torch.cosine_similarity(summary_vec.unsqueeze(1), summary_vec.unsqueeze(0), dim=2)
+        else:
+            raise NotImplementedError(f"selected dist_func {dist_func} not supported")
+
+    k = dist_matrix.shape[0]
+    adjusted_dist_mat = dist_matrix.clone()# + torch.diag(torch.ones(k)*float("inf")) # ignore self-distances
+    adjusted_dist_mat.fill_diagonal_(float("inf"))
+    min_dists, min_inds = torch.min(adjusted_dist_mat, dim=0)
+    mean_summary_score = torch.sum(min_dists) / k
+    return mean_summary_score, dist_matrix
+
+def get_k_online_summary_update_index(summary, observation, k, threshold=None, dist_func="l2_dist", summary_dist_matrix=None):
+    """
+    Alg. 1 from Girdhar et al. ICRA 2012 https://www.cim.mcgill.ca/~mrl/pubs/girdhar/icra2012.pdf
+    Returns index to replace with new observation, threshold, the distance matrix for the summary, and the distance vector for the observation
+    """
+    sample_size = summary.shape[0]
+
+    if sample_size < 1:
+        return sample_size, None, sample_size.new_zeros((1,1)), sample_size.new_zeros((1,1))
+
+    if threshold is None:
+        threshold, summary_dist_matrix = get_mean_summary_score(summary, dist_func=dist_func, dist_matrix=summary_dist_matrix)
+
+    if summary_dist_matrix is None:
+        _, summary_dist_matrix = get_mean_summary_score(summary, dist_func=dist_func, dist_matrix=summary_dist_matrix)
+
+    score, _, obs_dists = get_summary_score(summary, observation, dist_func=dist_func)
+
+    # Do not add if score does not exceed threshold
+    if score <= threshold:
+        return -1, threshold, summary_dist_matrix, obs_dists
+
+    # Simply add if summary size is smaller than k
+    if score > threshold and sample_size < k:
+        return sample_size, threshold, summary_dist_matrix, obs_dists
+
+    # Add observation scores to the bottom row of the distance matrix
+    dists_matrix = torch.cat((summary_dist_matrix, obs_dists.unsqueeze(0)), dim=0)
+
+    # faster way to find the worst scoring one?
+    S_inds = [k]
+    Z_inds = list(range(k))
+
+    for i in range(k-1):
+        S = dists_matrix.index_select(0, summary.new_tensor(S_inds, dtype=int))
+        Z_intersect_S = S.index_select(1, summary.new_tensor(Z_inds, dtype=int))
+
+        min_s, min_ind = torch.min(Z_intersect_S, dim=0)
+        new_ind = Z_inds[torch.argmax(min_s).item()]
+
+        S_inds.append(new_ind)
+        Z_inds.remove(new_ind)
+
+        S_inds.sort()
+        Z_inds.sort()
+
+    replacement_ind = Z_inds[0]
+    return replacement_ind, threshold, summary_dist_matrix, obs_dists
+
 class IndexedTensor:
 
     def __init__(self, tensor, original_index):
@@ -9,6 +106,7 @@ class IndexedTensor:
 
     def get_tensor(self):
         return self.tensor
+
     def get_index(self):
         return self.original_index
 
@@ -44,8 +142,6 @@ def distance_cost(summary_set, observation, distance_function = l2_dist):
 
   distances = torch.tensor([distance_function(observation,x) for x in summary_set])
   return torch.min(distances), torch.argmin(distances)
-
-
 
 def return_furthest_point(summary_set, observation_set, distance_function = l2_dist):
   '''This function works in more or less an offline fashion. It takes as input an entire summary
@@ -124,30 +220,6 @@ def online_summary_update(summary_set, observation, k):
   if summary_set.size()[0] > k:
     summary_set = extremumsummary(summary_set, k)
   return summary_set
-
-def k_online_summary_update_index(summary_set, observation, k, threshold = None, indices_to_keep = None):
-    """
-    NOT DONE
-    summary_set torch tensor, first dim is number of elements
-    k is the maximum summary size
-    """
-    raise NotImplementedError
-
-    summary_size = summary_set.size()[0]
-
-    # Initialize a threshold cost if none-existent
-    if threshold is None and summary_size > 1:
-        threshold = threshold_cost(summary_set)
-
-    # Added without replacement
-    if score_observation(summary_set, observation) > threshold and summary_size < k:
-        return summary_size, threshold
-
-    # Added with replacement
-    # todo
-
-    # Not added
-    return -1, threshold
 
 def online_summary_update_index_extremum(summary_set, observation, k, threshold = None, distance_function=l2_dist):
     '''Returns the index of the entry in the original summary set to be replaced when

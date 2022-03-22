@@ -186,15 +186,17 @@ class MH_DiMP(BaseTracker):
             self.summary_updated = False
 
             if self.params.get("use_active_online_extremum", False):
-                if self.params.get("dist_func", "cosine_dist") is "cosine_dist":
-                    self.dist_func = kc.cosine_dist
-                elif self.params.get("dist_func") is "l2_normalised_dist":
-                    self.dist_func = kc.l2_normalised_dist
-                else:
-                    self.dist_func = kc.l2_dist
+            #     if self.params.get("dist_func", "cosine_dist") is "cosine_dist":
+            #         self.dist_func = kc.cosine_dist
+            #     elif self.params.get("dist_func") is "l2_normalised_dist":
+            #         self.dist_func = kc.l2_normalised_dist
+            #     else:
+            #         self.dist_func = kc.l2_dist
 
-                self.extremum_summary_threshold = kc.threshold_cost(self.training_samples[0][:self.num_init_samples[0],...],
-                                                                    distance_function=self.dist_func)
+                # self.extremum_summary_threshold = kc.threshold_cost(self.training_samples[0][:self.num_init_samples[0],...],
+                #                                                     distance_function=self.dist_func)
+                self.extremum_summary_threshold, _ = kc.get_mean_summary_score(self.training_samples[0][:self.num_init_samples[0],...],
+                                                                    dist_func=self.params.get("dist_func", "cosine_dist"))
 
         # If used, initialize global trained networks (uses ground truth information)
         if self.params.get("use_global_trainer", False):
@@ -1085,10 +1087,16 @@ class MH_DiMP(BaseTracker):
         self.summary_updated = False
         sample = sample_x[0]
         summary_samples = self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0],...]
-        replace_ind, _ = kc.online_summary_update_index_extremum(summary_samples,
-                                                                 sample, self.summary_size[0],
-                                                                 threshold=self.extremum_summary_threshold,
-                                                                 distance_function=self.dist_func)
+        # replace_ind, _ = kc.online_summary_update_index_extremum(summary_samples,
+        #                                                          sample, self.summary_size[0],
+        #                                                          threshold=self.extremum_summary_threshold,
+        #                                                          distance_function=self.dist_func)
+
+        replace_ind, _, _, _ = kc.get_k_online_summary_update_index(summary_samples,
+                                                                sample, self.summary_size[0],
+                                                                threshold=self.extremum_summary_threshold,
+                                                                dist_func=self.params.get("dist_func","cosine_dist"))
+
         if replace_ind > -1:
             # Use oracle for active learning, do it after extremum
             if self.params.get("use_oracle_feedback", False):
@@ -1117,8 +1125,10 @@ class MH_DiMP(BaseTracker):
                 self.num_stored_samples[0] += 1
 
             if self.params.get("use_mean_score", True):
-                self.extremum_summary_threshold = kc.threshold_cost(self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0],...],
-                                              distance_function=self.dist_func)
+                # self.extremum_summary_threshold = kc.threshold_cost(self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0],...],
+                #                               distance_function=self.dist_func)
+                self.extremum_summary_threshold, _ = kc.get_mean_summary_score(self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0], ...],
+                    dist_func=self.dist_func)
             else:
                 self.extremum_summary_threshold *= self.params.get("summary_threshold_gamma", 1.005)
 
