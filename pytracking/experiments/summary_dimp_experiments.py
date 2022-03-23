@@ -94,9 +94,28 @@ def online_summary_fish_test():
     dataset = get_dataset('fish')
     return trackers, dataset
 
+def online_fill_first_fish_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_random_3_fill_first', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_cd_fill_first', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_random_03_fill_first', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_005_cd_fill_first', range(5))
+    dataset = get_dataset('fish', 'vot_2020')
+    return trackers, dataset
+
+def online_random_fish_vot_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_0005_l2', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_0005_cd', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_random_03', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_random_3', range(5)) + \
+               trackerlist('dimp_original', 'super_dimp', range(5))
+    dataset = get_dataset('vot_2020','fish')
+    return trackers, dataset
+
 def mh_fish_test():
     #trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
-    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_cd', range(1))
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_cd_fill_first', range(1))
     # trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1)) + \
     #            trackerlist('dimp_original', 'super_dimp', range(1)) + \
     #            trackerlist('mh_dimp_summary', 'super_dimp_baseline_set', range(1))
