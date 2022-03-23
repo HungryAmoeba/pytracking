@@ -11,11 +11,11 @@ def get_summary_score(summary, observation, dist_func="l2_dist"):
     # dist_function options are l2, cos_dist, or norm_l2 (not yet implemented)
     # summary is an KxMxNxB tensor, containing K observations
     # observation is a 1xMxNxB tensor, containing 1 obs unsqueezed
-    # returns the distance, index of the minimum, and a 1xK row vector of distances
+    # returns the distance, index of the minimum, and a (K,)-shape vector of distances
     summary_vec = summary.view(summary.shape[0], -1)
     observation_vec = observation.view(1, -1)
     if dist_func == "l2_dist":
-        dists = torch.cdist(summary_vec, observation_vec, p=2.0)
+        dists = torch.cdist(observation_vec, summary_vec, p=2.0).squeeze()
 
     elif dist_func == "cosine_dist":
         dists = 1-torch.cosine_similarity(summary_vec, observation_vec)
@@ -49,10 +49,11 @@ def get_mean_summary_score(summary, dist_func="l2_dist", dist_matrix=None):
     mean_summary_score = torch.sum(min_dists) / k
     return mean_summary_score, dist_matrix
 
-def get_k_online_summary_update_index(summary, observation, k, threshold=None, dist_func="l2_dist", summary_dist_matrix=None):
+def get_k_online_summary_update_index(summary, observation, k, threshold=None, dist_func="l2_dist", summary_dist_matrix=None, fill_first=False):
     """
     Alg. 1 from Girdhar et al. ICRA 2012 https://www.cim.mcgill.ca/~mrl/pubs/girdhar/icra2012.pdf
     Returns index to replace with new observation, threshold, the distance matrix for the summary, and the distance vector for the observation
+    Fill_first means to fill the summary set without consideration of the score (function will still compute the score though)
     """
     sample_size = summary.shape[0]
 
@@ -66,6 +67,10 @@ def get_k_online_summary_update_index(summary, observation, k, threshold=None, d
         _, summary_dist_matrix = get_mean_summary_score(summary, dist_func=dist_func, dist_matrix=summary_dist_matrix)
 
     score, _, obs_dists = get_summary_score(summary, observation, dist_func=dist_func)
+
+    # If fill first, and not yet k samples, just add
+    if fill_first and sample_size < k:
+        return sample_size, threshold, summary_dist_matrix, obs_dists
 
     # Do not add if score does not exceed threshold
     if score <= threshold:
