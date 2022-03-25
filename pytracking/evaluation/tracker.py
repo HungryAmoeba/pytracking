@@ -217,7 +217,10 @@ class Tracker:
 
         output = {'target_bbox': [],
                   'time': [],
-                  'segmentation': []}
+                  'segmentation': [],
+                  'summary_threshold': [],
+                  'summary_size': [],
+                  'query_requested': []}
         #import pdb; pdb.set_trace()
 
         def _store_outputs(tracker_out: dict, defaults=None):
@@ -267,6 +270,11 @@ class Tracker:
         init_default = {'target_bbox': init_info.get('init_bbox'),
                         'time': time.time() - start_time,
                         'segmentation': init_info.get('init_mask')}
+
+        if tracker.params.get('log_summary', False):
+            init_default['summary_threshold'] = out['summary_threshold']
+            init_default['query_requested'] = out['query_requested']
+            init_default['summary_size'] = out['summary_size']
 
         _store_outputs(out, init_default)
 

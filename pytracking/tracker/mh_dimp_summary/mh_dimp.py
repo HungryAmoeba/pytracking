@@ -184,6 +184,7 @@ class MH_DiMP(BaseTracker):
             self.num_stored_samples[0] += 1
 
             self.summary_updated = False
+            self.query_requested = False
 
             if self.params.get("use_active_online_extremum", False):
                 self.extremum_summary_threshold, _ = kc.get_mean_summary_score(self.training_samples[0][:self.num_init_samples[0],...],
@@ -297,8 +298,13 @@ class MH_DiMP(BaseTracker):
                     bb=self.target_boxes,
                     sample_weight=self.sample_weights[0],
                     compute_losses=plot_loss)
-
-        out = {'time': time.time() - tic}
+        if self.params.get("log_summary", False):
+            out = {'time': time.time() - tic,
+                   'summary_threshold': self.extremum_summary_threshold.item(),
+                   'query_requested': self.query_requested,
+                   'summary_size': self.num_stored_samples[0]-self.num_init_samples[0]}
+        else:
+            out = {'time': time.time() - tic}
         return out
 
     def get_sample_and_box(self, im, bbox):
@@ -468,6 +474,11 @@ class MH_DiMP(BaseTracker):
             out = {'target_bbox': output_state, 'index_to_replace': index_to_replace}
         else:
             out = {'target_bbox': output_state}
+
+        if self.params.get("log_summary", False):
+            out['summary_threshold'] = self.extremum_summary_threshold.item()
+            out['query_requested'] = self.query_requested
+            out['summary_size'] = self.num_stored_samples[0] - self.num_init_samples[0]
         return out
 
     def get_sample_location(self, sample_coord):
@@ -1079,6 +1090,8 @@ class MH_DiMP(BaseTracker):
         """
         # Update weights and get replace ind
         self.summary_updated = False
+        self.query_requested = False
+
         sample = sample_x[0]
         summary_samples = self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0],...]
 
@@ -1098,6 +1111,7 @@ class MH_DiMP(BaseTracker):
             else:
                 replace_ind = torch.randint(self.summary_size[0], (1,)).item()
 
+
         elif self.params.get("use_active_online_extremum", False):
             replace_ind, _, _, _ = kc.get_k_online_summary_update_index(summary_samples,
                                                                     sample, self.summary_size[0],
@@ -1108,6 +1122,7 @@ class MH_DiMP(BaseTracker):
         if replace_ind > -1:
             # Use oracle for active learning, do it after extremum
             if self.params.get("use_oracle_feedback", False) and not ignore_feedback:
+                self.query_requested = True
 
                 # Throw out if the predicted bounding box is pretty far off
                 pred_bbox = torch.cat((self.pos[[1, 0]] - (self.target_sz[[1, 0]] - 1) / 2, self.target_sz[[1, 0]]))
@@ -1120,7 +1135,7 @@ class MH_DiMP(BaseTracker):
                 if self.params.get('use_oracle_iou') and iou < oracle_iou_threshold:
                     return
 
-            print(f"Replacing ind: {replace_ind}")
+            #print(f"Replacing ind: {replace_ind}")
 
             self.summary_updated = True
 
@@ -1141,10 +1156,7 @@ class MH_DiMP(BaseTracker):
                 else:
                     self.extremum_summary_threshold *= self.params.get("summary_threshold_gamma", 1.005)
 
-                print(f"New thresh: {self.extremum_summary_threshold}")
-
             num_summary_samples = self.num_stored_samples[0] - self.num_init_samples[0]
-            print(f"Added: summary size: {num_summary_samples}, frame {self.frame_num}")
 
     def update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
         # Update weights and get replace ind
@@ -1391,6 +1403,9 @@ class MH_DiMP(BaseTracker):
         hard_negative_flag = learning_rate is not None
         if learning_rate is None:
             learning_rate = self.params.learning_rate
+
+        self.summary_updated = False
+        self.query_requested = False
 
         # Update the tracker memory
         if hard_negative_flag or self.frame_num % self.params.get('train_sample_interval', 1) == 0:

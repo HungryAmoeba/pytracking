@@ -115,7 +115,7 @@ def online_random_fish_vot_test():
 
 def mh_fish_test():
     #trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
-    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_cd_fill_first', range(1))
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_cd_fill_first_testing', range(1))
     # trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1)) + \
     #            trackerlist('dimp_original', 'super_dimp', range(1)) + \
     #            trackerlist('mh_dimp_summary', 'super_dimp_baseline_set', range(1))

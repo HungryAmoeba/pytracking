@@ -27,6 +27,18 @@ def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
         exec_times = np.array(data).astype(float)
         np.savetxt(file, exec_times, delimiter='\t', fmt='%f')
 
+    def save_summary_threshold(file, data):
+        summary_thresholds = np.array(data).astype(float)
+        np.savetxt(file, summary_thresholds, delimiter='\t', fmt='%f')
+
+    def save_summary_size(file, data):
+        summary_sizes = np.array(data).astype(int)
+        np.savetxt(file, summary_sizes, delimiter='\t', fmt='%d')
+
+    def save_query_requests(file, data):
+        query_requests = np.array(data).astype(int)
+        np.savetxt(file, query_requests, delimiter='\t', fmt='%d')
+
     def _convert_dict(input_dict):
         data_dict = {}
         for elem in input_dict:
@@ -37,6 +49,7 @@ def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
                     data_dict[k] = [v, ]
         return data_dict
 
+    # todo: unwieldly and repetitive, fix this
     for key, data in output.items():
         # If data is empty
         if not data:
@@ -64,6 +77,39 @@ def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
             else:
                 timings_file = '{}_time.txt'.format(base_results_path)
                 save_time(timings_file, data)
+
+        elif key == 'summary_size':
+            if isinstance(data[0], dict):
+                data_dict = _convert_dict(data)
+
+                for obj_id, d in data_dict.items():
+                    filename = '{}_{}_summary_size.txt'.format(base_results_path, obj_id)
+                    save_summary_size(filename, d)
+            else:
+                filename = '{}_summary_size.txt'.format(base_results_path)
+                save_summary_size(filename, data)
+
+        elif key == 'summary_threshold':
+            if isinstance(data[0], dict):
+                data_dict = _convert_dict(data)
+
+                for obj_id, d in data_dict.items():
+                    filename = '{}_{}_summary_threshold.txt'.format(base_results_path, obj_id)
+                    save_summary_threshold(filename, d)
+            else:
+                filename = '{}_summary_threshold.txt'.format(base_results_path)
+                save_summary_threshold(filename, data)
+
+        elif key == 'query_requested':
+            if isinstance(data[0], dict):
+                data_dict = _convert_dict(data)
+
+                for obj_id, d in data_dict.items():
+                    filename = '{}_{}_query_requested.txt'.format(base_results_path, obj_id)
+                    save_query_requests(filename, d)
+            else:
+                filename = '{}_query_requested.txt'.format(base_results_path)
+                save_query_requests(filename, data)
 
         elif key == 'segmentation':
             assert len(frame_names) == len(data)
