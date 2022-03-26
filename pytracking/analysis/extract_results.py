@@ -194,6 +194,8 @@ def get_summary_sizes(trackers, dataset, report_name, skip_missing_seq=False, ex
     valid_sequence = torch.ones(len(dataset), dtype=torch.uint8)
 
     summary_sequences = list()
+    summary_thresholds = list()
+    queries_requested = list()
 
     for seq_id, seq in enumerate(tqdm(dataset)):
         # Load anno
@@ -202,11 +204,13 @@ def get_summary_sizes(trackers, dataset, report_name, skip_missing_seq=False, ex
         for trk_id, trk in enumerate(trackers):
             # Load results
             base_results_path = '{}/{}'.format(trk.results_dir, seq.name)
-            results_path = '{}_summary_size_list.txt'.format(base_results_path)
+            results_path = '{}_summary_size.txt'.format(base_results_path)
+            summary_threshold_path = '{}_summary_threshold.txt'.format(base_results_path)
+            query_requested_path = '{}_summary_query_requested.txt'.format(base_results_path)
 
             if os.path.isfile(results_path):
                 summary_size_list = torch.tensor(load_text(str(results_path), delimiter=('\t', ','), dtype=np.float64))
-            
+
             else:
                 if skip_missing_seq:
                     valid_sequence[seq_id] = 0
@@ -215,4 +219,4 @@ def get_summary_sizes(trackers, dataset, report_name, skip_missing_seq=False, ex
                     raise Exception('Result not found. {}'.format(results_path))
             summary_sequences.append(summary_size_list)
 
-    return summary_sequences
+    return summary_sequences, summary_thresholds, queries_requested

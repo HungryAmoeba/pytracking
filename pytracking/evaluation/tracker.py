@@ -290,6 +290,7 @@ class Tracker:
 
             image = self._read_image(frame_path)
             frame_disp = image.copy()
+            frame_disp = cv.cvtColor(frame_disp, cv.COLOR_RGB2BGR)
 
             start_time = time.time()
 
@@ -333,6 +334,7 @@ class Tracker:
                 for index, img_bbox in enumerate(zip(summary_images,summary_bbox)):
                     bbox = img_bbox[1]
                     img = img_bbox[0]
+                    img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
                     start_point = (int(bbox[0]), int(bbox[1]))
                     end_point = (int(bbox[2] + bbox[0]),int(bbox[3] + bbox[1]))
                     cv.rectangle(img, start_point, end_point, (255,0,0), 3)
@@ -1018,6 +1020,7 @@ class Tracker:
                 for index, img_bbox in enumerate(zip(summary_images,summary_bbox)):
                     bbox = img_bbox[1]
                     img = img_bbox[0]
+                    img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
                     start_point = (int(bbox[0]), int(bbox[1]))
                     end_point = (int(bbox[2] + bbox[0]),int(bbox[3] + bbox[1]))
                     cv.rectangle(img, start_point, end_point, (255,0,0), 3)

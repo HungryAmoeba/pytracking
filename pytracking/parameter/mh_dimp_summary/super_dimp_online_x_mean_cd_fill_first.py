@@ -29,6 +29,7 @@ def parameters():
     params.use_global_extremum = False
 
     # Extremum summary params
+    params.log_summary = True # this is only for data saving at the moment
     params.fill_summary_first = True
     params.use_mean_score = True
     params.summary_threshold_gamma = 1.005
