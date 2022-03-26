@@ -103,14 +103,51 @@ def online_fill_first_fish_test():
     dataset = get_dataset('fish', 'vot_2020')
     return trackers, dataset
 
-def online_random_fish_vot_test():
+def original_dimp_all_minus_lasot_test():
 
-    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_0005_l2', range(5)) + \
-               trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_0005_cd', range(5)) + \
-               trackerlist('mh_dimp_summary', 'super_dimp_online_random_03', range(5)) + \
-               trackerlist('mh_dimp_summary', 'super_dimp_online_random_3', range(5)) + \
-               trackerlist('dimp_original', 'super_dimp', range(5))
-    dataset = get_dataset('vot_2020','fish')
+    trackers = trackerlist('dimp_original', 'super_dimp', range(5))
+    dataset = get_dataset('fish', 'vot_2020', 'uav', 'otb', 'nfs')
+    return trackers, dataset
+
+def original_dimp_lasot_test():
+
+    trackers = trackerlist('dimp_original', 'super_dimp', range(5))
+    dataset = get_dataset('lasot')
+    return trackers, dataset
+
+def xs_random_fish_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'online_rand_003_ff', range(5)) + \
+               trackerlist('mh_dimp_summary', 'online_rand_03_ff', range(5)) + \
+               trackerlist('mh_dimp_summary', 'online_rand_3_ff', range(5))
+    dataset = get_dataset('fish')
+    return trackers, dataset
+
+def xs_gamma_fish_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'online_gamma_005_cd_ff', range(5)) + \
+               trackerlist('mh_dimp_summary', 'online_gamma_03_cd_ff', range(5)) + \
+               trackerlist('mh_dimp_summary', 'online_gamma_3_cd_ff', range(5))
+    dataset = get_dataset('fish')
+    return trackers, dataset
+
+def xs_mean_dist_fish_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'online_mean_l2_ff', range(5)) + \
+               trackerlist('mh_dimp_summary', 'online_mean_cd_ff', range(5))
+    dataset = get_dataset('fish')
+    return trackers, dataset
+
+def xs_mean_lasot_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'online_mean_cd_ff', range(5))
+    dataset = get_dataset('lasot')
+    return trackers, dataset
+
+def xs_mean_all_minus_lasot_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'online_mean_cd_ff', range(5))
+    dataset = get_dataset('fish', 'vot_2020', 'uav', 'otb', 'nfs')
     return trackers, dataset
 
 def mh_fish_test():
