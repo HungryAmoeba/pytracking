@@ -182,7 +182,7 @@ def extract_results(trackers, dataset, report_name, skip_missing_seq=False, plot
 
     return eval_data
 
-def get_summary_sizes(trackers, dataset, report_name, skip_missing_seq=False, exclude_invalid_frames=False):
+def get_summary_stats(trackers, dataset, report_name, skip_missing_seq=False, exclude_invalid_frames=False):
     settings = env_settings()
     eps = 1e-16
 
@@ -193,8 +193,9 @@ def get_summary_sizes(trackers, dataset, report_name, skip_missing_seq=False, ex
 
     valid_sequence = torch.ones(len(dataset), dtype=torch.uint8)
 
-    summary_sequences = list()
+    summary_sizes = list()
     summary_thresholds = list()
+    summary_scores = list()
     queries_requested = list()
 
     for seq_id, seq in enumerate(tqdm(dataset)):
@@ -206,17 +207,29 @@ def get_summary_sizes(trackers, dataset, report_name, skip_missing_seq=False, ex
             base_results_path = '{}/{}'.format(trk.results_dir, seq.name)
             results_path = '{}_summary_size.txt'.format(base_results_path)
             summary_threshold_path = '{}_summary_threshold.txt'.format(base_results_path)
-            query_requested_path = '{}_summary_query_requested.txt'.format(base_results_path)
+            query_requested_path = '{}_query_requested.txt'.format(base_results_path)
+            summary_scores_path = '{}_summary_score.txt'.format(base_results_path)
 
             if os.path.isfile(results_path):
                 summary_size_list = torch.tensor(load_text(str(results_path), delimiter=('\t', ','), dtype=np.float64))
-
             else:
                 if skip_missing_seq:
                     valid_sequence[seq_id] = 0
                     break
                 else:
                     raise Exception('Result not found. {}'.format(results_path))
-            summary_sequences.append(summary_size_list)
+            summary_sizes.append(summary_size_list)
 
-    return summary_sequences, summary_thresholds, queries_requested
+            if os.path.isfile(summary_threshold_path):
+                summary_threshold_list = torch.tensor(load_text(str(summary_threshold_path), delimiter=('\t', ','), dtype=np.float64))
+                summary_thresholds.append(summary_threshold_list)
+
+            if os.path.isfile(query_requested_path):
+                query_requested_list = torch.tensor(load_text(str(query_requested_path), delimiter=('\t', ','), dtype=np.int32))
+                queries_requested.append(query_requested_list)
+
+            if os.path.isfile(summary_scores_path):
+                summary_score_list = torch.tensor(load_text(str(summary_scores_path), delimiter=('\t', ','), dtype=np.float64))
+                summary_scores.append(summary_score_list)
+
+    return summary_sizes, summary_thresholds, queries_requested, summary_scores

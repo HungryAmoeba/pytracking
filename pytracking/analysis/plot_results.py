@@ -6,7 +6,7 @@ import torch
 import pickle
 import json
 from pytracking.evaluation.environment import env_settings
-from pytracking.analysis.extract_results import extract_results, get_summary_sizes
+from pytracking.analysis.extract_results import extract_results, get_summary_stats
 import numpy as np
 
 def get_plot_draw_styles():
@@ -29,7 +29,6 @@ def get_plot_draw_styles():
                        {'color': (0.7, 0.6, 0.2), 'line_style': '-'}]
 
     return plot_draw_style
-
 
 def check_eval_data_is_valid(eval_data, trackers, dataset):
     """ Checks if the pre-computed results are valid"""
@@ -84,7 +83,6 @@ def merge_multiple_runs(eval_data):
     eval_data['avg_overlap_all'] = avg_overlap_all_merged.tolist()
 
     return eval_data
-
 
 def get_tracker_display_name(tracker):
     if tracker['disp_name'] is None:
@@ -199,7 +197,6 @@ def get_prec_curve(ave_success_rate_plot_center, valid_sequence):
 
     return prec_curve, prec_score
 
-
 def plot_results(trackers, dataset, report_name, merge_results=False,
                  plot_types=('success'), force_evaluation=False, **kwargs):
     """
@@ -276,7 +273,7 @@ def plot_results(trackers, dataset, report_name, merge_results=False,
 
     # ********************************  Summary Size Plot **************************************
     if 'summary_size' in plot_types:
-        summary_sizes = get_summary_sizes(trackers, dataset, report_name)
+        summary_sizes, _, _ = get_summary_stats(trackers, dataset, report_name)
         fig_summary, ax_summary = plt.subplots()
         for summary_list in summary_sizes:
             len_list = len(summary_list)
@@ -285,6 +282,66 @@ def plot_results(trackers, dataset, report_name, merge_results=False,
             ax_summary.plot(xaxis, yaxis, c = 'b')
         ax_summary.set_xlabel("Frame number")
         ax_summary.set_ylabel("Summary size")
+
+    # ********************************  Summary Size Plot **************************************
+    if 'summary_thresholds' in plot_types:
+        _, summary_thresholds, _, _ = get_summary_stats(trackers, dataset, report_name)
+        fig_summary, ax_summary = plt.subplots()
+        for summary_list in summary_thresholds:
+            len_list = len(summary_list)
+            xaxis = np.arange(0, len_list)
+            yaxis = np.array(summary_list)
+            ax_summary.plot(xaxis, yaxis, c = 'b')
+            #print(yaxis)
+        ax_summary.set_xlabel("Frame number")
+        ax_summary.set_ylabel("Summary thresholds")
+
+    # ********************************  Summary Size Plot **************************************
+    if 'queries' in plot_types:
+        _, summary_thresholds, queries, summary_scores = get_summary_stats(trackers, dataset, report_name)
+        fig_summary, ax_summary = plt.subplots()
+        i = 0
+        for summary_list, query, scores in zip(summary_thresholds, queries, summary_scores):
+            query = query.numpy()
+            scores = scores.numpy()
+            if len(query) < 4500:
+                continue
+            if i >= 1:
+                continue
+            i += 1
+            len_list = len(summary_list)
+            xaxis = np.arange(0, len_list)
+            yaxis = np.array(summary_list)
+            ax_summary.vlines(x=np.where(query), ymin=0, ymax=np.max(scores), colors="red", alpha=0.1)
+            print(np.sum(query)/len(query))
+            #print(yaxis)
+        i = 0
+        for summary_list, query in zip(summary_thresholds, queries):
+            query = query.numpy()
+            if len(query) < 4500:
+                continue
+            if i >= 1:
+                continue
+            i += 1
+            len_list = len(summary_list)
+            xaxis = np.arange(0, len_list)
+            yaxis = np.array(summary_list)
+            ax_summary.plot(xaxis, yaxis, c = 'b')
+        i = 0
+        for summary_list, query, scores in zip(summary_thresholds, queries, summary_scores):
+            query = query.numpy()
+            if len(query) < 4500:
+                continue
+            if i >= 1:
+                continue
+            i += 1
+            len_list = len(summary_list)
+            xaxis = np.arange(0, len_list)
+            yaxis = np.array(scores)
+            ax_summary.plot(xaxis, yaxis, c = 'g')
+        ax_summary.set_xlabel("Frame number")
+        ax_summary.set_ylabel("Summary thresholds")
+
     plt.show()
 
 

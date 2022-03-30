@@ -25,8 +25,7 @@ def UAV123_test():
     return trackers, dataset
 
 def OTB_test():
-    trackers = trackerlist('dimp_original', 'super_dimp', range(5)) + \
-               trackerlist('dimp_summary', 'super_dimp_15', range(5))
+    trackers = trackerlist('dimp_original', 'super_dimp', range(5))
 
     dataset = get_dataset('otb')
 
@@ -147,12 +146,21 @@ def xs_mean_lasot_test():
 def xs_mean_all_minus_lasot_test():
 
     trackers = trackerlist('mh_dimp_summary', 'online_mean_cd_ff', range(5))
-    dataset = get_dataset('fish', 'vot_2020', 'uav', 'otb', 'nfs')
+    dataset = get_dataset('vot_2020', 'uav', 'otb', 'nfs')
+    return trackers, dataset
+
+def xs_v_rand_always_query_fish_test():
+    trackers = trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_0_cd_ff', range(5)) + \
+               trackerlist('mh_dimp_summary', 'online_rand_always_ff', range(5))
+
+    dataset = get_dataset('fish')
+
     return trackers, dataset
 
 def mh_fish_test():
     #trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
-    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_mean_cd_fill_first_testing', range(1))
+    trackers = trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_0_cd_ff', range(1)) + \
+               trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_8_cd_ff', range(1))
     # trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1)) + \
     #            trackerlist('dimp_original', 'super_dimp', range(1)) + \
     #            trackerlist('mh_dimp_summary', 'super_dimp_baseline_set', range(1))

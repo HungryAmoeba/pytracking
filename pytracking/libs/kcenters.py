@@ -58,7 +58,7 @@ def get_k_online_summary_update_index(summary, observation, k, threshold=None, d
     sample_size = summary.shape[0]
 
     if sample_size < 1:
-        return sample_size, None, sample_size.new_zeros((1,1)), sample_size.new_zeros((1,1))
+        return sample_size, None, None, sample_size.new_zeros((1,1)), sample_size.new_zeros((1,1))
 
     if threshold is None:
         threshold, summary_dist_matrix = get_mean_summary_score(summary, dist_func=dist_func, dist_matrix=summary_dist_matrix)
@@ -70,15 +70,15 @@ def get_k_online_summary_update_index(summary, observation, k, threshold=None, d
 
     # If fill first, and not yet k samples, just add
     if fill_first and sample_size < k:
-        return sample_size, threshold, summary_dist_matrix, obs_dists
+        return sample_size, score, threshold, summary_dist_matrix, obs_dists
 
     # Do not add if score does not exceed threshold
     if score <= threshold:
-        return -1, threshold, summary_dist_matrix, obs_dists
+        return -1, score, threshold, summary_dist_matrix, obs_dists
 
     # Simply add if summary size is smaller than k
     if score > threshold and sample_size < k:
-        return sample_size, threshold, summary_dist_matrix, obs_dists
+        return sample_size, score, threshold, summary_dist_matrix, obs_dists
 
     # Add observation scores to the bottom row of the distance matrix
     dists_matrix = torch.cat((summary_dist_matrix, obs_dists.unsqueeze(0)), dim=0)
@@ -101,7 +101,7 @@ def get_k_online_summary_update_index(summary, observation, k, threshold=None, d
         Z_inds.sort()
 
     replacement_ind = Z_inds[0]
-    return replacement_ind, threshold, summary_dist_matrix, obs_dists
+    return replacement_ind, score, threshold, summary_dist_matrix, obs_dists
 
 class IndexedTensor:
 
@@ -174,7 +174,7 @@ def score_observation(summary_set, observation, distance_function = l2_dist):
 
   return min_distance
   '''
-  return torch.min(torch.tensor([distance_function(x, observation) for x in summary_set]))
+  return torch.min(observation.new_tensor([distance_function(x, observation) for x in summary_set]))
 
 def threshold_cost(summary_set, distance_function = l2_dist):
   '''Calculates the threshold as the mean score of each of the samples currently in the summary '''
@@ -226,14 +226,14 @@ def online_summary_update(summary_set, observation, k):
     summary_set = extremumsummary(summary_set, k)
   return summary_set
 
-def online_summary_update_index_extremum(summary_set, observation, k, threshold = None, distance_function=l2_dist):
+def online_summary_update_index_extremum(summary_set, observation, k, threshold = None, distance_function=l2_dist, fill_first=False):
     '''Returns the index of the entry in the original summary set to be replaced when
     the summary size == k upon addition of the new observation '''
     length = summary_set.size()[0]
 
     # If the set is empty, add the observation
     if length is 0:
-        return length, threshold
+        return length, None, threshold
 
     if threshold is None and length > 1:
         threshold = threshold_cost(summary_set)
@@ -246,11 +246,14 @@ def online_summary_update_index_extremum(summary_set, observation, k, threshold 
 
     # New observation does not meet threshold, do not add
     if score <= threshold:
-        return -1, threshold
+        return -1, score, threshold
 
-    # New observation meets threshold, set is not max size, simply add it
-    if score > threshold and length < k:
-        return length, threshold
+    # Fill first, simply add it since max size not reached
+    if length < k and fill_first:
+        return length, score, threshold
+    # New observation meets threshold, set is not max size, then add it
+    elif score > threshold and length < k:
+        return length, score, threshold
 
     # New observation meets threshold, but set is full, need to prune and run extremum summary
     dummy_summary_set = [x for x in torch.cat((summary_set, observation), dim = 0)]
@@ -261,9 +264,9 @@ def online_summary_update_index_extremum(summary_set, observation, k, threshold 
       indices_before = set(range(k))
       index_to_remove = indices_before - indices_in_new_summary
 
-      return index_to_remove.pop(), threshold #, dummy_summary_set
+      return index_to_remove.pop(), score, threshold #, dummy_summary_set
 
-    return -1, threshold
+    return -1, score, threshold
 
 def extremumsummary_indexes(observation_set, num_observations, distance_function=l2_dist):
   '''Computes a summary as a subset of input samples by greedily picking the samples
