@@ -65,22 +65,7 @@ class LaSOTDataset(BaseDataset):
 
     #this only returns a truncated sequence list
     def _get_sequence_list(self):
-    	sequence_list = ['book-11',
-			'deer-10',
-			'rubicCube-6',
-			'swing-10',
-			'rabbit-10',
-			'racing-10',
-			'tiger-6',
-			'hat-1',
-			'kite-4',
-			'motorcycle-3',
-			'hand-2',
-			'electricfan-1',
-			'chameleon-3',
-			'fox-3',
-			'kangaroo-2']
-       ''' sequence_list = ['airplane-1',
+        sequence_list = ['airplane-1',
                          'airplane-9',
                          'airplane-13',
                          'airplane-15',
@@ -359,5 +344,5 @@ class LaSOTDataset(BaseDataset):
                          'volleyball-1',
                          'volleyball-13',
                          'volleyball-18',
-                         'volleyball-19'] '''
+                         'volleyball-19']
         return sequence_list
