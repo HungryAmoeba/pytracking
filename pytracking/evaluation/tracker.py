@@ -220,7 +220,8 @@ class Tracker:
                   'segmentation': [],
                   'summary_threshold': [],
                   'summary_size': [],
-                  'query_requested': []}
+                  'query_requested': [],
+                  'summary_score': []}
         #import pdb; pdb.set_trace()
 
         def _store_outputs(tracker_out: dict, defaults=None):
@@ -275,6 +276,8 @@ class Tracker:
             init_default['summary_threshold'] = out['summary_threshold']
             init_default['query_requested'] = out['query_requested']
             init_default['summary_size'] = out['summary_size']
+            init_default['summary_score'] = out['summary_score']
+            init_default['summary_updated'] = out['summary_updated']
 
         _store_outputs(out, init_default)
 

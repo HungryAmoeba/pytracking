@@ -31,6 +31,10 @@ def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
         summary_thresholds = np.array(data).astype(float)
         np.savetxt(file, summary_thresholds, delimiter='\t', fmt='%f')
 
+    def save_summary_score(file, data):
+        summary_scores = np.array(data).astype(float)
+        np.savetxt(file, summary_scores, delimiter='\t', fmt='%f')
+
     def save_summary_size(file, data):
         summary_sizes = np.array(data).astype(int)
         np.savetxt(file, summary_sizes, delimiter='\t', fmt='%d')
@@ -38,6 +42,10 @@ def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
     def save_query_requests(file, data):
         query_requests = np.array(data).astype(int)
         np.savetxt(file, query_requests, delimiter='\t', fmt='%d')
+
+    def save_summary_updates(file, data):
+        summary_updates = np.array(data).astype(int)
+        np.savetxt(file, summary_updates, delimiter='\t', fmt='%d')
 
     def _convert_dict(input_dict):
         data_dict = {}
@@ -100,6 +108,17 @@ def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
                 filename = '{}_summary_threshold.txt'.format(base_results_path)
                 save_summary_threshold(filename, data)
 
+        elif key == 'summary_score':
+            if isinstance(data[0], dict):
+                data_dict = _convert_dict(data)
+
+                for obj_id, d in data_dict.items():
+                    filename = '{}_{}_summary_score.txt'.format(base_results_path, obj_id)
+                    save_summary_score(filename, d)
+            else:
+                filename = '{}_summary_score.txt'.format(base_results_path)
+                save_summary_score(filename, data)
+
         elif key == 'query_requested':
             if isinstance(data[0], dict):
                 data_dict = _convert_dict(data)
@@ -110,6 +129,17 @@ def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
             else:
                 filename = '{}_query_requested.txt'.format(base_results_path)
                 save_query_requests(filename, data)
+
+        elif key == 'summary_updated':
+            if isinstance(data[0], dict):
+                data_dict = _convert_dict(data)
+
+                for obj_id, d in data_dict.items():
+                    filename = '{}_{}_summary_updated.txt'.format(base_results_path, obj_id)
+                    save_summary_updates(filename, d)
+            else:
+                filename = '{}_summary_updated.txt'.format(base_results_path)
+                save_summary_updates(filename, data)
 
         elif key == 'segmentation':
             assert len(frame_names) == len(data)
