@@ -125,8 +125,8 @@ def xs_random_fish_test():
 def xs_gamma_fish_test():
 
     trackers = trackerlist('mh_dimp_summary', 'online_gamma_005_cd_ff', range(5)) + \
-               trackerlist('mh_dimp_summary', 'online_gamma_03_cd_ff', range(5)) + \
-               trackerlist('mh_dimp_summary', 'online_gamma_3_cd_ff', range(5))
+               trackerlist('mh_dimp_summary', 'online_gamma_05_cd_ff', range(5)) + \
+               trackerlist('mh_dimp_summary', 'online_gamma_5_cd_ff', range(5))
     dataset = get_dataset('fish')
     return trackers, dataset
 
@@ -146,7 +146,23 @@ def xs_mean_lasot_test():
 def xs_mean_all_minus_lasot_test():
 
     trackers = trackerlist('mh_dimp_summary', 'online_mean_cd_ff', range(5))
-    dataset = get_dataset('vot_2020', 'uav', 'otb', 'nfs')
+    dataset = get_dataset('vot_2020', 'uav', 'otb')
+    return trackers, dataset
+
+def online_summary_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_005_l2', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_005_cd', range(5)) + \
+               trackerlist('dimp_original', 'super_dimp', range(5))
+    dataset = get_dataset('vot_2020', 'otb', 'uav')
+    return trackers, dataset
+
+def online_summary_lasot_test():
+
+    trackers = trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_005_l2', range(5)) + \
+               trackerlist('mh_dimp_summary', 'super_dimp_online_x_gamma_005_cd', range(5)) + \
+               trackerlist('dimp_original', 'super_dimp', range(5))
+    dataset = get_dataset('lasot')
     return trackers, dataset
 
 def xs_v_rand_always_query_fish_test():
@@ -154,7 +170,6 @@ def xs_v_rand_always_query_fish_test():
                trackerlist('mh_dimp_summary', 'online_rand_always_ff', range(5))
 
     dataset = get_dataset('fish')
-
     return trackers, dataset
 
 def mh_fish_test():
