@@ -13,7 +13,7 @@ def parameters():
 
     # Bandwidth params
     params.use_limited_bandwidth = True
-    params.num_frames_between_queries = 10
+    params.num_frames_between_queries = 1
     params.only_query_on_threshold = True
 
     # Online active params
