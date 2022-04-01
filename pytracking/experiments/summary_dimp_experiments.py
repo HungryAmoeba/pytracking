@@ -159,12 +159,21 @@ def xs_v_rand_always_query_fish_test():
 
 def mh_fish_test():
     #trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
-    trackers = trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_0_cd_ff', range(1)) + \
-               trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_8_cd_ff', range(1))
+    trackers = trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_0_cd_ff', range(1))
+    #trackers = trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_0_cd_ff', range(1)) + \
+    #           trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_8_cd_ff', range(1))
     # trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1)) + \
     #            trackerlist('dimp_original', 'super_dimp', range(1)) + \
     #            trackerlist('mh_dimp_summary', 'super_dimp_baseline_set', range(1))
 
+    dataset = get_dataset('fish')
+
+    return trackers, dataset
+
+def bl_fish_test():
+    #trackers = trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_5', range(1))
+    trackers = trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_100', range(5)) + \
+               trackerlist('bl_dimp_summary', 'online_rand_bl_100', range(5))
     dataset = get_dataset('fish')
 
     return trackers, dataset

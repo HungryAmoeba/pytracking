@@ -1,5 +1,5 @@
 """
-TODO: Clean up code, right now prefix: xs = extremum summary functions, mh = multi-hypothesis functions
+TODO: Clean up code, right now prefix: xs = extremum summary functions
 """
 import random
 
@@ -27,41 +27,7 @@ import pytracking.libs.visualization as vs
 import matplotlib.pyplot as plt
 import copy
 
-class TrainingSample(object):
-    def __init__(self):
-        self.sample = None
-        self.target_box = None
-        self.im_patch = None
-        self.weight = 0
-        self.id = None
-        self.num_supported_hypotheses = 0
-
-class MH_Node(object):
-    def __init__(self):
-        self.net = None
-        self.target_filter = None
-
-        self.curr_feats = None
-        self.curr_scores = None
-        self.mem_ids = set()
-        self.frame_ids = set()
-        self.scores = []
-
-        # extremum_summary related
-        self.extremum_threshold = 0
-
-    def clone(self):
-        #todo: just deepcopy the whole object
-        new_hypo = MH_Node()
-        new_hypo.net = copy.deepcopy(self.net)
-        new_hypo.target_filter = copy.deepcopy(self.target_filter)
-        new_hypo.frame_ids = copy.deepcopy(self.frame_ids)
-        new_hypo.mem_ids = copy.deepcopy(self.mem_ids)
-        new_hypo.scores = copy.deepcopy(self.scores)
-        new_hypo.extremum_threshold = self.extremum_threshold
-        return new_hypo
-
-class MH_DiMP(BaseTracker):
+class BL_DiMP(BaseTracker):
 
     multiobj_mode = 'parallel'
 
@@ -156,19 +122,6 @@ class MH_DiMP(BaseTracker):
         if self.params.get('use_iou_net', True):
             self.init_iou_net(init_backbone_feat)
 
-        # If used, initialize multi-hypothesis trackers
-        if self.params.get("use_mh", False):
-            new_hypothesis = MH_Node()
-            new_hypothesis.target_filter = self.target_filter
-            new_hypothesis.net = self.net
-            new_hypothesis.mem_ids = set(range(self.num_init_samples[0]))
-            new_hypothesis.extremum_threshold = kc.threshold_cost(self.training_samples[0][:self.num_init_samples[0],...])
-
-            self.hypotheses = []
-            self.hypotheses.append(new_hypothesis)
-
-            self.mh_training_sample_set = {}
-
         # If used, initialize online active summaries
         if self.params.get("use_active_online_summary", False):
             assert(self.summary_size[0] > 0)
@@ -185,6 +138,7 @@ class MH_DiMP(BaseTracker):
 
             self.summary_updated = False
             self.query_requested = False
+            self.request_training_step = False
             self.extremum_summary_threshold = torch.tensor([self.params.get("default_summary_threshold", 0)], device=self.params.device)
             self.summary_score = torch.tensor([0], device=self.params.device)
 
@@ -300,6 +254,19 @@ class MH_DiMP(BaseTracker):
                     bb=self.target_boxes,
                     sample_weight=self.sample_weights[0],
                     compute_losses=plot_loss)
+
+        if self.params.get("use_limited_bandwidth", False) and self.params.get("use_active_online_summary", False):
+            self.query_replace_ind = -1
+            self.query_im_patch = None
+            self.query_summary_score = None
+            self.query_sample = None
+            self.query_target_box = None
+
+            if self.params.get("use_oracle_feedback", False):
+                self.query_pred_bb = None
+                self.query_oracle_bb = None
+                self.query_frame_num = -1
+
         if self.params.get("log_summary", False):
             out = {'time': time.time() - tic,
                    'summary_threshold': self.extremum_summary_threshold.item(),
@@ -372,23 +339,11 @@ class MH_DiMP(BaseTracker):
         # Convert image
         im = numpy_to_torch(image)
 
-        # If multi-hypothesis, prune
-        if self.params.get("use_mh") and \
-                self.params.prune_random_sample and \
-                len(self.mh_training_sample_set) > self.params.summary_size:
-            self.mh_prune_random_frame_id()
-
-        # Print useful multi-hypothesis tracking information
-        if self.params.get("use_mh", True):
-            print("Num hypo: ", len(self.hypotheses))
-            print("Num samples: ", len(self.mh_training_sample_set))
-            print([x.frame_ids for x in self.hypotheses])
-            print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
-
         # If using summaries, reset tracking variables
         if self.params.get("use_active_online_summary", False):
             self.summary_updated = False
             self.query_requested = False
+            self.request_training_step = False
             self.summary_score = self.summary_score = torch.tensor([-1], device=self.params.device)
 
         # ------- LOCALIZATION ------- #
@@ -398,19 +353,13 @@ class MH_DiMP(BaseTracker):
                                                                       self.target_scale * self.params.scale_factors,
                                                                       self.img_sample_sz)
         # Extract classification features
-        if not self.params.get("use_mh", True):
-            test_x = self.get_classification_features(backbone_feat)
-        else:
-            self.mh_get_classification_features(backbone_feat)
+        test_x = self.get_classification_features(backbone_feat)
 
         # Location of sample
         sample_pos, sample_scales = self.get_sample_location(sample_coords)
 
         # Compute classification scores
-        if not self.params.get("use_mh", True):
-            scores_raw = self.classify_target(test_x)
-        else:
-            scores_raw, test_x = self.mh_classify_target()
+        scores_raw = self.classify_target(test_x)
 
         # Localize the target
         translation_vec, scale_ind, s, flag = self.localize_target(scores_raw, sample_pos, sample_scales)
@@ -468,17 +417,6 @@ class MH_DiMP(BaseTracker):
         else:
             output_state = new_state.tolist()
 
-        # todo: we can fake delays by looking at the whole gt history
-        if self.params.get('use_mh') and self.params.get('use_oracle_feedback', False):
-            oracle_iou_threshold = self.params.get('oracle_iou_threshold', 0.85)
-            oracle_prec_threshold = self.params.get('oracle_prec_threshold', 5)
-            pred_bb = torch.tensor(output_state)
-            gt = info["gt"]
-            iou = calc_iou_overlap(torch.tensor(gt).unsqueeze(0), pred_bb.unsqueeze(0))
-
-            if self.params.get('use_oracle_iou') and self.frame_num in self.mh_training_sample_set and iou < oracle_iou_threshold:
-                self.mh_prune_frame_id(self.frame_num)
-
         if self.summary_update:
             self.summary_update = False
             index_to_replace = self.summary_prev_ind
@@ -511,26 +449,6 @@ class MH_DiMP(BaseTracker):
         with torch.no_grad():
             scores = self.net.classifier.classify(self.target_filter, sample_x)
         return scores
-
-    def mh_classify_target(self):
-        # TODO: This is incredibly naive
-        best_max_score = -float("Inf")
-        best_score = None
-        best_feats = None
-
-        # Get classification scores for all hypotheses, return the best one as current estimate
-        for i, hypothesis in enumerate(self.hypotheses):
-            with torch.no_grad():
-                hypothesis.curr_scores = hypothesis.net.classifier.classify(hypothesis.target_filter,
-                                                                            hypothesis.curr_feats)
-                max_score = torch.max(hypothesis.curr_scores)
-                hypothesis.scores.append(max_score)
-
-                if max_score > best_max_score:
-                    best_max_score = max_score
-                    best_score = hypothesis.curr_scores
-                    best_feats = hypothesis.curr_feats
-        return best_score, best_feats
 
     def localize_target(self, scores, sample_pos, sample_scales):
         """Run the target localization."""
@@ -651,10 +569,6 @@ class MH_DiMP(BaseTracker):
         with torch.no_grad():
             return self.net.extract_classification_feat(backbone_feat)
 
-    def mh_get_classification_features(self, backbone_feat):
-        for hypothesis in self.hypotheses:
-            hypothesis.curr_feats = hypothesis.net.extract_classification_feat(backbone_feat)
-
     def get_iou_backbone_features(self, backbone_feat):
         return self.net.get_backbone_bbreg_feat(backbone_feat)
 
@@ -769,7 +683,6 @@ class MH_DiMP(BaseTracker):
         init_target_boxes = torch.cat(init_target_boxes.view(1, 4), 0).to(self.params.device)
         self.target_boxes = init_target_boxes.new_zeros(self.sample_memory_size, 4)
         self.target_boxes[:init_target_boxes.shape[0],:] = init_target_boxes
-        self.mh_initial_target_boxes = init_target_boxes
 
         #leave this empty initially
 
@@ -795,11 +708,6 @@ class MH_DiMP(BaseTracker):
         # todo: what should the sample weights be (idea: probably the same in the multi-hypothesis case actually)
         init_sample_weights = TensorList([x.new_ones(1) / (x.shape[0] + self.summary_rel_weight * self.summary_size[0]) for x in train_x])
         summary_sample_weights = TensorList([self.summary_rel_weight * init_sample_weights])
-
-        # Used for the global MH tracker
-        # todo: likely don't need these/these weights should probably be the same
-        self.mh_initial_sample_weight = init_sample_weights
-        self.mh_online_sample_weight = summary_sample_weights[0]
 
         #init_sample_weights = TensorList([x.new_ones(1) / x.shape[0] for x in train_x])
 
@@ -828,10 +736,6 @@ class MH_DiMP(BaseTracker):
         self.training_samples = TensorList(
             [x.new_zeros(self.sample_memory_size, x.shape[1], x.shape[2], x.shape[3]) for x in train_x])
 
-        # todo: clean this up
-        self.mh_initial_training_samples = train_x
-        self.mh_initial_sample_weights = self.sample_weights[0][:self.num_init_samples[0]]
-
         for ts, x in zip(self.training_samples, train_x):
             ts[:x.shape[0],...] = x
 
@@ -850,263 +754,28 @@ class MH_DiMP(BaseTracker):
                 self.training_samples[0][i] = train_x[0][i-self.num_init_samples[0]]
                 '''
 
-    def mh_update_memory_extremum(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
+    def xs_update_memory_clean(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
+        # Fill policy
 
-        # Prune the worst-confidence until we have max number of hypotheses remaining
-        max_num_hypotheses = self.params.get("max_num_hypotheses", 8)
-        scores = torch.tensor([h.scores[-1] for h in self.hypotheses])
-        if len(self.hypotheses) > max_num_hypotheses:
-            top_k_scores, top_k_inds = torch.topk(scores, max_num_hypotheses)
-            new_hypotheses = [0]*max_num_hypotheses
+        # Query policy
 
-            # Decrement counter for training samples
-            # todo: this is inefficient
-            for i, h in enumerate(self.hypotheses):
-                if i not in top_k_inds:
-                    for frame_id in h.frame_ids:
-                        self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
-
-            for i, k in enumerate(top_k_inds):
-                new_hypotheses[i] = self.hypotheses[k]
-            self.hypotheses = new_hypotheses
-
-        # Create training sample
-        new_training_sample = TrainingSample()
-        new_training_sample.sample = sample_x
-        new_training_sample.weight = self.mh_online_sample_weight
-        new_training_sample.id = self.frame_num
-        new_training_sample.target_box = target_box.to(self.params.device)
-        img = im_patch.reshape(im_patch.size()[1:])
-        img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
-        new_training_sample.im_patch = img
-
-        new_frame_id = self.frame_num
-        #self.mh_training_sample_set[self.frame_num] = ts
-
-        # Update hypotheses
-        new_hypotheses = []
-        for hypothesis in self.hypotheses:
-            new_hypotheses.append(hypothesis)
-
-            # todo: big question, how do we initialize these? Should we be allowed to replace the initial sample?
-            # guessing no, maybe the first sample can be included and we always start with that as the seed
-            # Check to see if we should add sample to hypothesis
-            # for now, we ignore the initial set, we'll come back to this later
-            frame_ids = list(hypothesis.frame_ids)
-            num_online_samples = len(frame_ids)
-            samples = torch.zeros(torch.Size([num_online_samples]) + self.mh_initial_training_samples[0].shape[1:], device=self.params.device)
-            for i, frame_id in enumerate(frame_ids):
-                samples[i, ...] = self.mh_training_sample_set[frame_id].sample[0]
-
-            max_summary_size = self.params.get('summary_size', 35)
-            # todo: what should be going into this?
-            if hypothesis.extremum_threshold is 0:
-                replace_ind, _, threshold = kc.online_summary_update_index_extremum(samples, new_training_sample.sample[0], max_summary_size)
-            else:
-                replace_ind, _, threshold = kc.online_summary_update_index_extremum(samples, new_training_sample.sample[0], max_summary_size, threshold=hypothesis.extremum_threshold)
-
-            # Sample not added, no need to add a new hypothesis
-            if replace_ind < 0:
-                continue
-
-            # Add new hypothesis with the new sample
-            new_hypothesis = hypothesis.clone()
-            new_hypothesis.frame_ids.add(new_frame_id)
-
-            if threshold is not None:
-                new_hypothesis.extremum_threshold = threshold * self.params.get('summary_threshold_gamma', 2)
-
-            if new_frame_id not in self.mh_training_sample_set:
-                self.mh_training_sample_set[new_frame_id] = new_training_sample
-
-            # If was added (and not replaced)
-            if replace_ind > len(frame_ids) - 1:
-                samples = torch.cat((samples, new_training_sample.sample[0]), dim=0)
-                frame_ids.append(new_frame_id)
-            # If replaced a sample
-            else:
-                old_frame_id = frame_ids[replace_ind]
-                frame_ids[replace_ind] = new_frame_id
-                new_hypothesis.frame_ids.remove(old_frame_id)
-                samples[replace_ind, ...] = new_training_sample.sample[0]
-
-            for frame_id in new_hypothesis.frame_ids:
-                self.mh_training_sample_set[frame_id].num_supported_hypotheses += 1
-
-            num_online_samples = len(new_hypothesis.frame_ids)
-            num_init_samples = self.num_init_samples[0]
-            num_training_samples = num_init_samples + num_online_samples
-            samples = torch.cat((self.mh_initial_training_samples[0], samples), dim=0)
-            sample_weights = torch.zeros([num_training_samples], device=self.params.device)
-            target_boxes = torch.zeros([num_training_samples, 4], device=self.params.device)
-
-            # todo: vectorize this!?
-            # todo: look at the losses, do these updates matter?
-            sample_weights[:num_init_samples, ...] = self.mh_initial_sample_weights
-            target_boxes[:num_init_samples, ...] = self.mh_initial_target_boxes
-            for i, frame_id in enumerate(frame_ids):
-                samples[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].sample[0]
-                sample_weights[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].weight[0]
-                target_boxes[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].target_box
-
-            num_iter = 2  # todo: make this smarter?
-            plot_loss = self.params.debug > 0
-
-            # Run the filter optimizer module
-            with torch.no_grad():
-                new_hypothesis.target_filter, _, losses = new_hypothesis.net.classifier.filter_optimizer(
-                    new_hypothesis.target_filter,
-                    num_iter=num_iter,
-                    feat=samples,
-                    bb=target_boxes,
-                    sample_weight=sample_weights,
-                    compute_losses=plot_loss)
-            # todo: this seems dumb
-
-            new_hypotheses.append(new_hypothesis)
-        self.hypotheses = new_hypotheses
-
-        self.mh_prune_training_sample_memory()
-
-    def mh_update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
-
-        # Prune the worst-confidence until we have max number of hypotheses remaining
-        max_num_hypotheses = self.params.get("max_num_hypotheses", 8)
-        scores = torch.tensor([h.scores[-1] for h in self.hypotheses])
-        if len(self.hypotheses) > max_num_hypotheses:
-            top_k_scores, top_k_inds = torch.topk(scores, max_num_hypotheses)
-            new_hypotheses = [0]*max_num_hypotheses
-
-            # Decrement counter for training samples
-            # todo: this is inefficient
-            for i, h in enumerate(self.hypotheses):
-                if i not in top_k_inds:
-                    for frame_id in h.frame_ids:
-                        self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
-
-            for i, k in enumerate(top_k_inds):
-                new_hypotheses[i] = self.hypotheses[k]
-            self.hypotheses = new_hypotheses
-
-        # Add sample to the training set
-        ts = TrainingSample()
-        ts.sample = sample_x
-        ts.weight = self.mh_online_sample_weight
-        ts.id = self.frame_num
-        ts.target_box = target_box.to(self.params.device)
-        img = im_patch.reshape(im_patch.size()[1:])
-        img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
-        ts.im_patch = img
-        self.mh_training_sample_set[self.frame_num] = ts
-
-        # Update hypotheses
-        new_hypotheses = []
-        for hypothesis in self.hypotheses:
-            new_hypothesis = hypothesis.clone()
-            new_hypothesis.frame_ids.add(self.frame_num)
-
-            for frame_id in new_hypothesis.frame_ids:
-                self.mh_training_sample_set[frame_id].num_supported_hypotheses += 1
-
-            # new_hypothesis.mem_ids.add(summary_replace_ind)
-            num_online_samples = len(new_hypothesis.frame_ids)
-            num_init_samples = self.num_init_samples[0]
-            num_training_samples = num_init_samples + num_online_samples
-            samples = torch.zeros(torch.Size([num_training_samples]) + self.mh_initial_training_samples[0].shape[1:], device=self.params.device)
-            sample_weights = torch.zeros([num_training_samples], device=self.params.device)
-            target_boxes = torch.zeros([num_training_samples, 4], device=self.params.device)
-
-            # todo: vectorize this!?
-            # todo: look at the losses, do these updates matter?
-            frame_ids = new_hypothesis.frame_ids
-            samples[:num_init_samples, ...] = self.mh_initial_training_samples[0]
-            sample_weights[:num_init_samples, ...] = self.mh_initial_sample_weights
-            target_boxes[:num_init_samples, ...] = self.mh_initial_target_boxes
-            for i, frame_id in enumerate(frame_ids):
-                samples[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].sample[0]
-                sample_weights[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].weight[0]
-                target_boxes[num_init_samples + i, ...] = self.mh_training_sample_set[frame_id].target_box
-
-            num_iter = 2  # todo: make this smarter?
-            plot_loss = self.params.debug > 0
-
-            # Run the filter optimizer module
-            with torch.no_grad():
-                new_hypothesis.target_filter, _, losses = new_hypothesis.net.classifier.filter_optimizer(
-                    new_hypothesis.target_filter,
-                    num_iter=num_iter,
-                    feat=samples,
-                    bb=target_boxes,
-                    sample_weight=sample_weights,
-                    compute_losses=plot_loss)
-            # todo: this seems dumb
-            new_hypotheses.append(hypothesis)
-            new_hypotheses.append(new_hypothesis)
-        self.hypotheses = new_hypotheses
-
-        self.mh_prune_training_sample_memory()
-
-    def mh_prune_training_sample_memory(self):
-        # Prune global training sample memory
-        global_frame_ids = list(self.mh_training_sample_set.keys())
-        for frame_id in global_frame_ids:
-            if self.mh_training_sample_set[frame_id].num_supported_hypotheses <= 0:
-                self.mh_training_sample_set.pop(frame_id, None)
-
-    def mh_prune_frame_id(self, pruned_frame_id):
-        if pruned_frame_id not in self.mh_training_sample_set:
-            return
-
-        kept_hypotheses = []
-        forget_inds = []
-        for i, hypothesis in enumerate(self.hypotheses):
-            if pruned_frame_id in hypothesis.frame_ids:
-                forget_inds.append(i)
-                continue
-            kept_hypotheses.append(hypothesis)
-
-        # todo: this is a common degenerate case, what is the best way to handle this?
-        # possibilities: (1) ignore this id, (2) remove form all the hypotheses, but don't prune the hypotheses (future hypothese will hopefully get slightly more corrected)
-        # ideal case: use this as negative training example instead
-        if len(kept_hypotheses) is 0:
-            print(f"Partial pruning of {pruned_frame_id} due to degenerate case")
-            for i in forget_inds:
-                h = self.hypotheses[i]
-                h.frame_ids.remove(pruned_frame_id)
-
-            self.mh_training_sample_set.pop(pruned_frame_id, None)
-            return
-
-        # If we do prune, update global training memory counters
-        for i in forget_inds:
-            h = self.hypotheses[i]
-            for frame_id in h.frame_ids:
-                self.mh_training_sample_set[frame_id].num_supported_hypotheses -= 1
-
-        self.mh_prune_training_sample_memory()
-        self.hypotheses = kept_hypotheses
-
-        self.mh_training_sample_set.pop(pruned_frame_id, None)
-
-    def mh_prune_random_frame_id(self):
-        frame_id = random.sample(list(self.mh_training_sample_set),1)[0]
-        self.mh_prune_frame_id(frame_id)
-
-    def mh_print_summary(self):
-        print("Current frame: ", self.frame_num)
-        print([x.frame_ids for x in self.hypotheses])
-        print([(x, self.mh_training_sample_set[x].num_supported_hypotheses) for x in self.mh_training_sample_set])
+        # Replacement policy
+        pass
 
     def xs_update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
         """
         eXtremum Summary update memory, also handles random query case as well
         """
+        #todo: this is spaghetti code, please clean it up
         # Update weights and get replace ind
-        sample = sample_x[0]
-        summary_samples = self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0],...]
+        self.summary_updated = False
+        self.query_requested = False
 
-        replace_ind = -1
         ignore_feedback = False
+        replace_ind = -1
+
+        sample = sample_x[0]
+        summary_samples = self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0], ...]
 
         # Fill the summary set with the first images
         full_summary = self.num_stored_samples[0] - self.num_init_samples[0] >= self.summary_size[0]
@@ -1114,12 +783,61 @@ class MH_DiMP(BaseTracker):
             replace_ind = self.num_stored_samples[0] - self.num_init_samples[0]
             ignore_feedback = True
 
+            # Take a training step with the just-filled summary
+            if replace_ind == self.summary_size[0] + self.num_init_samples[0]:
+                self.request_training_step = True
+
         # Randomly query for feedback with some set probability
         elif self.params.get("use_rnd_query", False) and torch.rand(1) < self.params.get("random_query_probability", 0.05):
             # Keep if less than full, otherwise randomly replace sample
             if not full_summary:
                 replace_ind = self.num_stored_samples[0] - self.num_init_samples[0]
             else:
+                replace_ind = torch.randint(self.summary_size[0], (1,)).item()
+
+        # If limited bandwidth, track the highest scored sample to query
+        elif self.params.get("use_limited_bandwidth", False) and self.params.get("use_active_online_extremum", False):
+            summary_score, _, _ = kc.get_summary_score(summary_samples, sample, dist_func=self.params.get("dist_func", "cosine_dist"))
+            self.summary_score = summary_score
+
+            # Only query when threshold exceeded (further reduce bandwidth)
+            if self.params.get("only_query_on_threshold", False) and summary_score > self.extremum_summary_threshold and (self.query_sample is None or summary_score > self.query_summary_score):
+                self.query_summary_score = summary_score
+                self.query_sample = sample
+                self.query_im_patch = im_patch
+                self.query_target_box = target_box
+
+                if self.params.get("use_oracle_feedback", False):
+                    self.query_frame_num = self.frame_num
+                    self.query_oracle_bb = self.ground_truth_bbox
+                    self.query_pred_bb = torch.cat((self.pos[[1, 0]] - (self.target_sz[[1, 0]] - 1) / 2, self.target_sz[[1, 0]]))
+
+            # Always query
+            elif not self.params.get("only_query_on_threshold", False) and summary_score > self.query_summary_score:
+                self.query_summary_score = summary_score
+                self.query_sample = sample
+                self.query_im_patch = im_patch
+                self.query_target_box = target_box
+
+                if self.params.get("use_oracle_feedback", False):
+                    self.query_frame_num = self.frame_num
+                    self.query_oracle_bb = self.ground_truth_bbox
+                    self.query_pred_bb = torch.cat((self.pos[[1, 0]] - (self.target_sz[[1, 0]] - 1) / 2, self.target_sz[[1, 0]]))
+
+            if self.frame_num % self.params.get("num_frames_between_queries", 10) == 0 and self.query_sample is not None:
+                # todo: if there's a query sample, figure out the information and query, then replace
+                replace_ind, summary_score, _, _, _ = kc.get_k_online_summary_update_index(summary_samples,
+                                                                                           self.query_sample, self.summary_size[0],
+                                                                                           threshold=self.extremum_summary_threshold,
+                                                                                           dist_func=self.params.get(
+                                                                                               "dist_func",
+                                                                                               "cosine_dist"),
+                                                                                           fill_first=self.params.get(
+                                                                                               "fill_summary_first",
+                                                                                               False))
+                self.query_replace_ind = replace_ind
+        elif self.params.get("use_limited_bandwidth", False):
+            if self.frame_num % self.params.get("num_frames_between_queries", 10) == 0:
                 replace_ind = torch.randint(self.summary_size[0], (1,)).item()
 
         # Use extremum summary to determine query and replacement
@@ -1133,8 +851,30 @@ class MH_DiMP(BaseTracker):
             self.summary_score = summary_score
 
         if replace_ind > -1:
-            # Use oracle for active learning, do it after extremum
-            if self.params.get("use_oracle_feedback", False) and not ignore_feedback:
+            # if query_sample is not None, then just replace the normal things with the queried one
+            if self.params.get("use_limited_bandwidth", False) and self.query_sample is not None and not ignore_feedback:
+                self.query_requested = True
+
+                # Throw out if the predicted bounding box is pretty far off
+
+                pred_bbox = self.query_pred_bb
+                oracle_iou_threshold = self.params.get('oracle_iou_threshold', 0.85)
+                oracle_prec_threshold = self.params.get('oracle_prec_threshold', 5)
+
+                gt = self.query_oracle_bb
+                iou = calc_iou_overlap(torch.tensor(gt).unsqueeze(0), pred_bbox.unsqueeze(0))
+
+                replace_ind = self.query_replace_ind
+                sample = self.query_sample
+                target_box = self.query_target_box
+                im_patch = self.query_im_patch
+
+                # Oracle disagrees, skip update
+                if self.params.get('use_oracle_iou') and iou < oracle_iou_threshold:
+                    return
+
+            # Query oracle for active learning
+            elif self.params.get("use_oracle_feedback", False) and not ignore_feedback:
                 self.query_requested = True
 
                 # Throw out if the predicted bounding box is pretty far off
@@ -1145,23 +885,16 @@ class MH_DiMP(BaseTracker):
                 gt = self.ground_truth_bbox
                 iou = calc_iou_overlap(torch.tensor(gt).unsqueeze(0), pred_bbox.unsqueeze(0))
 
+                # Oracle disagrees, skip update
                 if self.params.get('use_oracle_iou') and iou < oracle_iou_threshold:
                     return
 
-            #print(f"Replacing ind: {replace_ind}")
-
+            # Update the summary set
             self.summary_updated = True
 
-            self.training_samples[0][self.num_init_samples[0] + replace_ind, ...] = sample
-            self.target_boxes[self.num_init_samples[0] + replace_ind, ...] = target_box
-            img = im_patch.reshape(im_patch.size()[1:])
-            img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
-            self.summary_patches[replace_ind, ...] = img
-            self.sample_weights[0][self.num_init_samples[0] + replace_ind] = self.sample_weights[0][0] # todo: make this a parameter
+            self.update_summary(replace_ind, sample, target_box, im_patch, self.sample_weights[0][0])
 
-            if self.num_stored_samples[0] < self.num_init_samples[0] + self.summary_size[0]:
-                self.num_stored_samples[0] += 1
-
+            # Update the threshold
             if self.params.get("use_active_online_extremum", False):
                 if self.params.get("use_mean_score", True):
                     self.extremum_summary_threshold, _ = kc.get_mean_summary_score(self.training_samples[0][self.num_init_samples[0]:self.num_stored_samples[0], ...],
@@ -1170,6 +903,17 @@ class MH_DiMP(BaseTracker):
                     self.extremum_summary_threshold *= self.params.get("summary_threshold_gamma", 1.005)
 
             num_summary_samples = self.num_stored_samples[0] - self.num_init_samples[0]
+
+    def update_summary(self, replace_ind, sample, target_box, im_patch, weight):
+        self.training_samples[0][self.num_init_samples[0] + replace_ind, ...] = sample
+        self.target_boxes[self.num_init_samples[0] + replace_ind, ...] = target_box
+        img = im_patch.reshape(im_patch.size()[1:])
+        img = torch.moveaxis((img - img.min()) / (img.max() - img.min()), 0, 2)
+        self.summary_patches[replace_ind, ...] = img
+        self.sample_weights[0][self.num_init_samples[0] + replace_ind] = weight #self.sample_weights[0][0]  # todo: make this a parameter
+
+        if self.num_stored_samples[0] < self.num_init_samples[0] + self.summary_size[0]:
+            self.num_stored_samples[0] += 1
 
     def update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
         # Update weights and get replace ind
@@ -1421,10 +1165,6 @@ class MH_DiMP(BaseTracker):
         if hard_negative_flag or self.frame_num % self.params.get('train_sample_interval', 1) == 0:
             if self.params.get("use_active_online_summary", False):
                 self.xs_update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
-            elif self.params.get("use_mh", False) and self.params.get('use_extremum_pruning', False):
-                self.mh_update_memory_extremum(TensorList([train_x]), target_box, im_patch, learning_rate)
-            elif self.params.get("use_mh", False):
-                self.mh_update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
             else:
                 self.update_memory(TensorList([train_x]), target_box, im_patch, learning_rate)
 
@@ -1435,18 +1175,13 @@ class MH_DiMP(BaseTracker):
             num_iter = self.params.get('net_opt_hn_iter', None)
         elif low_score_th is not None and low_score_th > scores.max().item():
             num_iter = self.params.get('net_opt_low_iter', None)
-        elif self.summary_update or self.summary_updated:
+        elif self.summary_update or self.summary_updated or self.request_training_step:
             num_iter = self.params.get('summary_update_num_iter', 2)
             #print(f"Num iter is {num_iter} due to summary update")
         elif (self.frame_num - 1) % self.params.train_skipping == 0 and self.params.get("use_continuous_training", True):
             num_iter = self.params.get('net_opt_update_iter', None)
-            #print(f"Num iter {num_iter} due to every 20 updates")
 
         plot_loss = self.params.debug > 0
-
-        # Multi-hypothesis has its own way of updating all the filters
-        if self.params.get("use_mh", False):
-            num_iter = 0
 
         if num_iter > 0:
             # Get inputs for the DiMP filter optimizer module
@@ -1688,20 +1423,14 @@ class MH_DiMP(BaseTracker):
             self.visdom.register((image, box), 'Tracking', 1, 'Tracking')
 
     def return_summary_patches(self):
-        if self.params.get("use_mh", True):
-            return [self.mh_training_sample_set[frame_id].im_patch for frame_id in self.mh_training_sample_set]
-        else:
-            return self.summary_patches
-            #return self.ref_patches[:self.summary_size[0]]
+        return self.summary_patches
+        #return self.ref_patches[:self.summary_size[0]]
 
     def return_summary_bbox(self):
-        if self.params.get("use_mh", True):
-            return [self.mh_training_sample_set[frame_id].target_box for frame_id in self.mh_training_sample_set]
-        else:
-            start_ind = self.num_init_samples[0]
-            end_ind = self.online_start_ind[0]
-            return self.target_boxes[start_ind:end_ind]
-            #return self.target_boxes[:self.summary_size[0]]
+        start_ind = self.num_init_samples[0]
+        end_ind = self.online_start_ind[0]
+        return self.target_boxes[start_ind:end_ind]
+        #return self.target_boxes[:self.summary_size[0]]
 
     def return_bbox(self):
         return self.target_boxes
