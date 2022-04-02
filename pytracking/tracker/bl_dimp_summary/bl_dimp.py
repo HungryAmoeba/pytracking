@@ -813,7 +813,7 @@ class BL_DiMP(BaseTracker):
                     self.query_pred_bb = torch.cat((self.pos[[1, 0]] - (self.target_sz[[1, 0]] - 1) / 2, self.target_sz[[1, 0]]))
 
             # Always query
-            elif not self.params.get("only_query_on_threshold", False) and summary_score > self.query_summary_score and self.query_sample is None:
+            elif not self.params.get("only_query_on_threshold", False) and (self.query_sample is None or summary_score > self.query_summary_score):
                 self.query_summary_score = summary_score
                 self.query_sample = sample
                 self.query_im_patch = im_patch
@@ -868,6 +868,17 @@ class BL_DiMP(BaseTracker):
                 sample = self.query_sample
                 target_box = self.query_target_box
                 im_patch = self.query_im_patch
+
+                # Clear the query
+                self.query_summary_score = -1
+                self.query_sample = None
+                self.query_im_patch = None
+                self.query_target_box = None
+
+                if self.params.get("use_oracle_feedback", False):
+                    self.query_frame_num = -1
+                    self.query_oracle_bb = None
+                    self.query_pred_bb = None
 
                 # Oracle disagrees, skip update
                 if self.params.get('use_oracle_iou') and iou < oracle_iou_threshold:
