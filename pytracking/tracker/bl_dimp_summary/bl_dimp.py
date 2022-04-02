@@ -813,7 +813,7 @@ class BL_DiMP(BaseTracker):
                     self.query_pred_bb = torch.cat((self.pos[[1, 0]] - (self.target_sz[[1, 0]] - 1) / 2, self.target_sz[[1, 0]]))
 
             # Always query
-            elif not self.params.get("only_query_on_threshold", False) and summary_score > self.query_summary_score:
+            elif not self.params.get("only_query_on_threshold", False) and summary_score > self.query_summary_score and self.query_sample is None:
                 self.query_summary_score = summary_score
                 self.query_sample = sample
                 self.query_im_patch = im_patch
