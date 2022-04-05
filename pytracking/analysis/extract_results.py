@@ -128,6 +128,7 @@ def extract_results(trackers, dataset, report_name, skip_missing_seq=False, plot
         # Load anno
         anno_bb = torch.tensor(seq.ground_truth_rect)
         target_visible = torch.tensor(seq.target_visible, dtype=torch.uint8) if seq.target_visible is not None else None
+
         for trk_id, trk in enumerate(trackers):
             # Load results
             base_results_path = '{}/{}'.format(trk.results_dir, seq.name)
@@ -222,6 +223,7 @@ def get_summary_stats(trackers, dataset, report_name, skip_missing_seq=False, ex
 
             if os.path.isfile(summary_threshold_path):
                 summary_threshold_list = torch.tensor(load_text(str(summary_threshold_path), delimiter=('\t', ','), dtype=np.float64))
+
                 summary_thresholds.append(summary_threshold_list)
 
             if os.path.isfile(query_requested_path):
@@ -233,3 +235,69 @@ def get_summary_stats(trackers, dataset, report_name, skip_missing_seq=False, ex
                 summary_scores.append(summary_score_list)
 
     return summary_sizes, summary_thresholds, queries_requested, summary_scores
+
+def get_individual_seq_summary_stats(trackers, dataset, report_name, skip_missing_seq=False, exclude_invalid_frames=False):
+    """
+    Returns multiple dictionaries, where keys are tuples of (seq_name, tracker_name): (summary_sizes, summary_thresholds, summary_scores, queries)
+    """
+    settings = env_settings()
+    eps = 1e-16
+
+    result_plot_path = os.path.join(settings.result_plot_path, report_name)
+
+    if not os.path.exists(result_plot_path):
+        os.makedirs(result_plot_path)
+
+    valid_sequence = torch.ones(len(dataset), dtype=torch.uint8)
+
+    summary_sizes = {}
+    summary_thresholds = {}
+    summary_scores = {}
+    queries_requested = {}
+    seq_data_keys = []
+
+    seq_names = [s.name for s in dataset]
+    tracker_names = [{'name': t.name, 'param': t.parameter_name, 'run_id': t.run_id, 'disp_name': t.display_name}
+                     for t in trackers]
+
+    for seq_id, seq in enumerate(tqdm(dataset)):
+        # Load anno
+        anno_bb = torch.tensor(seq.ground_truth_rect)
+        target_visible = torch.tensor(seq.target_visible, dtype=torch.uint8) if seq.target_visible is not None else None
+        for trk_id, trk in enumerate(trackers):
+
+            tracker_name = tracker_names[trk_id]['disp_name'] + "_" + str(tracker_names[trk_id]['run_id'])
+            seq_name = seq_names[seq_id]
+            seq_data_key = (seq_name, tracker_name)
+            seq_data_keys.append(seq_data_key)
+
+            # Load results
+            base_results_path = '{}/{}'.format(trk.results_dir, seq.name)
+            results_path = '{}_summary_size.txt'.format(base_results_path)
+            summary_threshold_path = '{}_summary_threshold.txt'.format(base_results_path)
+            query_requested_path = '{}_query_requested.txt'.format(base_results_path)
+            summary_scores_path = '{}_summary_score.txt'.format(base_results_path)
+
+            if os.path.isfile(results_path):
+                summary_size_list = torch.tensor(load_text(str(results_path), delimiter=('\t', ','), dtype=np.float64))
+            else:
+                if skip_missing_seq:
+                    valid_sequence[seq_id] = 0
+                    break
+                else:
+                    raise Exception('Result not found. {}'.format(results_path))
+            summary_sizes[seq_data_key] = summary_size_list
+
+            if os.path.isfile(summary_threshold_path):
+                summary_threshold_list = torch.tensor(load_text(str(summary_threshold_path), delimiter=('\t', ','), dtype=np.float64))
+                summary_thresholds[seq_data_key] = summary_threshold_list
+
+            if os.path.isfile(query_requested_path):
+                query_requested_list = torch.tensor(load_text(str(query_requested_path), delimiter=('\t', ','), dtype=np.int32))
+                queries_requested[seq_data_key] = query_requested_list
+
+            if os.path.isfile(summary_scores_path):
+                summary_score_list = torch.tensor(load_text(str(summary_scores_path), delimiter=('\t', ','), dtype=np.float64))
+                summary_scores[seq_data_key] = summary_score_list
+
+    return seq_data_keys, summary_sizes, summary_thresholds, queries_requested, summary_scores

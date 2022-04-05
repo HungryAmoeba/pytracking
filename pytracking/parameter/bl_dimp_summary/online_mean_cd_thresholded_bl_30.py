@@ -36,7 +36,7 @@ def parameters():
     # Extremum summary params
     params.log_summary = True # this is only for data saving at the moment
     params.fill_summary_first = True
-    params.use_mean_score = False
+    params.use_mean_score = True
     params.summary_threshold_gamma = 1
     params.default_summary_threshold = 0 # always query
     params.dist_func = "cosine_dist" # "cosine_dist", "l2_normalised_dist", "l2_dist"

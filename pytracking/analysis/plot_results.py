@@ -6,7 +6,7 @@ import torch
 import pickle
 import json
 from pytracking.evaluation.environment import env_settings
-from pytracking.analysis.extract_results import extract_results, get_summary_stats
+from pytracking.analysis.extract_results import extract_results, get_summary_stats, get_individual_seq_summary_stats
 import numpy as np
 
 def get_plot_draw_styles():
@@ -196,6 +196,78 @@ def get_prec_curve(ave_success_rate_plot_center, valid_sequence):
     prec_score = prec_curve[:, 20]
 
     return prec_curve, prec_score
+
+def plot_per_sequence_summary_results(trackers, dataset, report_name, merge_results=False, plot_types=('queries'),
+                                      force_evaluation=False, selected_sequences=None, **kwargs):
+    """
+    Plot results for the given trackers
+
+    args:
+        trackers - List of trackers to evaluate
+        dataset - List of sequences to evaluate
+        report_name - Name of the folder in env_settings.perm_mat_path where the computed results and plots are saved
+        merge_results - If True, multiple random runs for a non-deterministic trackers are averaged
+        plot_types - List of scores to display. Can contain 'success',
+                    'prec' (precision), and 'norm_prec' (normalized precision)
+        selected_sequences - List of names of sequences to plot (plots all if None)
+    """
+    # Load data
+    settings = env_settings()
+
+    plot_draw_styles = get_plot_draw_styles()
+
+    # Load pre-computed results
+    result_plot_path = os.path.join(settings.result_plot_path, report_name)
+    eval_data = check_and_load_precomputed_results(trackers, dataset, report_name, force_evaluation, **kwargs)
+
+    # Merge results from multiple runs
+    if merge_results:
+        eval_data = merge_multiple_runs(eval_data)
+
+    tracker_names = eval_data['trackers']
+
+    valid_sequence = torch.tensor(eval_data['valid_sequence'], dtype=torch.bool)
+
+    print('\nPlotting results over {} / {} sequences'.format(valid_sequence.long().sum().item(), valid_sequence.shape[0]))
+
+    print('\nGenerating plots for: {}'.format(report_name))
+
+    seq_data_keys, summary_sizes, summary_thresholds, queries_requested, summary_scores = get_individual_seq_summary_stats(trackers, dataset, report_name)
+
+    # ********************************  Summary Size Plot **************************************
+    if 'queries' in plot_types:
+        for seq_data_key in seq_data_keys:
+            seq_name, tracker_name = seq_data_key
+
+            if selected_sequences is None or (seq_name in selected_sequences and not selected_sequences is None):
+                fig_summary, ax_summary = plt.subplots()
+
+                #todo: calling numpy on these seems weird
+                queries = queries_requested[seq_data_key].numpy()
+                scores = summary_scores[seq_data_key].numpy()
+                sizes = summary_sizes[seq_data_key].numpy()
+
+                num_frames = len(sizes)
+
+                xaxis = np.arange(num_frames)
+                ax_summary.vlines(x=np.where(queries), ymin=0, ymax=np.maximum(np.max(scores), 1), colors="red", alpha=0.1)
+
+                if 'summary_thresholds' in plot_types:
+                    thresholds = summary_thresholds[seq_data_key].numpy()
+                    ax_summary.plot(xaxis, thresholds, 'blue')
+
+                if 'summary_scores' in plot_types:
+                    ax_summary.plot(xaxis, scores, 'green')
+
+                if 'summary_sizes' in plot_types:
+                    ax_summary.plot(xaxis, sizes, 'yellow')
+
+                ax_summary.set_title(tracker_name + ": " + seq_name)
+                ax_summary.set_xlabel("Frame number")
+                ax_summary.set_ylabel("Summary score")
+                plt.show()
+
+    plt.show()
 
 def plot_results(trackers, dataset, report_name, merge_results=False,
                  plot_types=('success'), force_evaluation=False, **kwargs):
