@@ -211,7 +211,11 @@ def bl_thresholded_query_fish_test():
                trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_30', range(5)) + \
                trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_10', range(5)) + \
                trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_1', range(5)) + \
-               trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_100', range(5))
+               trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_100', range(5)) + \
+               trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_5', range(5)) + \
+               trackerlist('bl_dimp_summary', 'online_mean_cd_thresholded_bl_15', range(5)) + \
+               trackerlist('bl_dimp_summary', 'online_rand_bl_5', range(5)) + \
+               trackerlist('bl_dimp_summary', 'online_rand_bl_15', range(5))
     dataset = get_dataset('fish')
 
     return trackers, dataset
@@ -221,6 +225,8 @@ def bl_always_query_fish_test():
                trackerlist('bl_dimp_summary', 'online_xs_cd_bl_10', range(5)) + \
                trackerlist('bl_dimp_summary', 'online_xs_cd_bl_30', range(5)) + \
                trackerlist('bl_dimp_summary', 'online_xs_cd_bl_60', range(5)) + \
+               trackerlist('bl_dimp_summary', 'online_xs_cd_bl_5', range(5)) + \
+               trackerlist('bl_dimp_summary', 'online_xs_cd_bl_15', range(5)) + \
                trackerlist('bl_dimp_summary', 'online_xs_cd_bl_100', range(5))
     dataset = get_dataset('fish')
 
