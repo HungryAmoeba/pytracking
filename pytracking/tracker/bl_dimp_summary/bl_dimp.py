@@ -256,6 +256,7 @@ class BL_DiMP(BaseTracker):
                     compute_losses=plot_loss)
 
         if self.params.get("use_limited_bandwidth", False) and self.params.get("use_active_online_summary", False):
+            self.frames_since_last_query = 0
             self.query_replace_ind = -1
             self.query_im_patch = None
             self.query_summary_score = None
@@ -417,6 +418,11 @@ class BL_DiMP(BaseTracker):
         else:
             output_state = new_state.tolist()
 
+        # Update query
+        if self.params.get('use_limited_bandwidth', False):
+            self.frames_since_last_query += 1
+
+        # Logging information
         if self.summary_update:
             self.summary_update = False
             index_to_replace = self.summary_prev_ind
@@ -752,15 +758,7 @@ class BL_DiMP(BaseTracker):
                 self.training_samples[0][i] = train_x[0][0]
             else:
                 self.training_samples[0][i] = train_x[0][i-self.num_init_samples[0]]
-                '''
-
-    def xs_update_memory_clean(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
-        # Fill policy
-
-        # Query policy
-
-        # Replacement policy
-        pass
+        '''
 
     def xs_update_memory(self, sample_x: TensorList, target_box, im_patch, learning_rate = None):
         """
@@ -824,7 +822,7 @@ class BL_DiMP(BaseTracker):
                     self.query_oracle_bb = self.ground_truth_bbox
                     self.query_pred_bb = torch.cat((self.pos[[1, 0]] - (self.target_sz[[1, 0]] - 1) / 2, self.target_sz[[1, 0]]))
 
-            if self.frame_num % self.params.get("num_frames_between_queries", 10) == 0 and self.query_sample is not None:
+            if self.frames_since_last_query > self.params.get("num_frames_between_queries", 10) and self.query_sample is not None:
                 # todo: if there's a query sample, figure out the information and query, then replace
                 replace_ind, summary_score, _, _, _ = kc.get_k_online_summary_update_index(summary_samples,
                                                                                            self.query_sample, self.summary_size[0],
@@ -836,6 +834,7 @@ class BL_DiMP(BaseTracker):
                                                                                                "fill_summary_first",
                                                                                                False))
                 self.query_replace_ind = replace_ind
+                
         elif self.params.get("use_limited_bandwidth", False):
             if self.frame_num % self.params.get("num_frames_between_queries", 10) == 0:
                 replace_ind = torch.randint(self.summary_size[0], (1,)).item()
@@ -855,8 +854,7 @@ class BL_DiMP(BaseTracker):
             if self.params.get("use_limited_bandwidth", False) and self.query_sample is not None and not ignore_feedback:
                 self.query_requested = True
 
-                # Throw out if the predicted bounding box is pretty far off
-
+                # Compute oracle errors
                 pred_bbox = self.query_pred_bb
                 oracle_iou_threshold = self.params.get('oracle_iou_threshold', 0.85)
                 oracle_prec_threshold = self.params.get('oracle_prec_threshold', 5)
@@ -879,6 +877,8 @@ class BL_DiMP(BaseTracker):
                     self.query_frame_num = -1
                     self.query_oracle_bb = None
                     self.query_pred_bb = None
+
+                self.frames_since_last_query = 0
 
                 # Oracle disagrees, skip update
                 if self.params.get('use_oracle_iou') and iou < oracle_iou_threshold:

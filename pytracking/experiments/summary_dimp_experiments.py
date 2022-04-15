@@ -172,9 +172,22 @@ def xs_v_rand_always_query_fish_test():
     dataset = get_dataset('fish')
     return trackers, dataset
 
+def replace_augs_fish_test():
+    trackers = trackerlist('bl_dimp_summary', 'online_no_augs_mean_cd_thresholded_bl_60', range(5))
+    dataset = get_dataset('fish')
+
+    return trackers, dataset
+
+def debug_fish_test():
+    trackers = trackerlist('bl_dimp_summary', 'online_no_augs_mean_cd_thresholded_bl_60', range(1))
+    dataset = get_dataset('fish')
+
+    return trackers, dataset
+
+
 def mh_fish_test():
     #trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
-    trackers = trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_0_cd_ff', range(1))
+    trackers = trackerlist('bl_dimp_anchor_summary', 'online_mean_cd_thresholded_bl_1', range(1))
     #trackers = trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_0_cd_ff', range(1)) + \
     #           trackerlist('mh_dimp_summary', 'online_gamma_0_default_0_8_cd_ff', range(1))
     # trackers = trackerlist('mh_dimp_summary', 'super_dimp_15', range(1)) + \
