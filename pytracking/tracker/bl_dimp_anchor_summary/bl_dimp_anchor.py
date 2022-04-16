@@ -106,7 +106,7 @@ class BL_DiMP(BaseTracker):
                    'summary_threshold': self.extremum_summary_threshold[obj_id].item(),
                    'query_requested': self.query_requested[obj_id],
                    'summary_size': self.num_init_samples[obj_id],
-                   'summary_score': self.summary_score.item(),
+                   'summary_score': self.summary_score[obj_id].item(),
                    'summary_updated': self.summary_updated[obj_id]}
         else:
             out = {'time': time.time() - tic}
