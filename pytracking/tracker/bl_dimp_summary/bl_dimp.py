@@ -345,7 +345,7 @@ class BL_DiMP(BaseTracker):
             self.summary_updated = False
             self.query_requested = False
             self.request_training_step = False
-            self.summary_score = self.summary_score = torch.tensor([-1], device=self.params.device)
+            self.summary_score = torch.tensor([-1], device=self.params.device)
 
         # ------- LOCALIZATION ------- #
 
