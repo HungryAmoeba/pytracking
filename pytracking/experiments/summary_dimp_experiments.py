@@ -172,14 +172,27 @@ def xs_v_rand_always_query_fish_test():
     dataset = get_dataset('fish')
     return trackers, dataset
 
-def replace_augs_fish_test():
-    trackers = trackerlist('bl_dimp_summary', 'online_no_augs_mean_cd_thresholded_bl_60', range(5))
+def replace_augs_thresh_fish_test():
+    trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_thresholded_bl_60', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_thresholded_bl_30', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_thresholded_bl_1', range(5))
+
     dataset = get_dataset('fish')
 
     return trackers, dataset
 
+def replace_augs_fixed_rate_fish_test():
+    trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_fr_bl_60', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_fr_bl_30', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_fr_bl_1', range(5))
+
+    dataset = get_dataset('fish')
+
+    return trackers, dataset
+
+
 def debug_fish_test():
-    trackers = trackerlist('bl_dimp_summary', 'online_no_augs_mean_cd_thresholded_bl_60', range(1))
+    trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_thresholded_bl_30', range(1))
     dataset = get_dataset('fish')
 
     return trackers, dataset
