@@ -35,7 +35,7 @@ def parameters():
     # Extremum summary params
     params.use_summary = True
     params.summary_size = 15 # Currently useless, set by number of initial samples
-    params.log_summary = False # this is only for data saving at the moment
+    params.log_summary = True # this is only for data saving at the moment
     params.summary_replacement_policy = "extremum" # "extremum", "random"
     params.threshold_update_policy = "mean_score" # "mean_score", "constant"
     params.fill_summary_first = True

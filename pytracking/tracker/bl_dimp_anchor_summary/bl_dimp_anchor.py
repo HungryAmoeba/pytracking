@@ -521,8 +521,6 @@ class BL_DiMP(BaseTracker):
                                                    dist_func=self.params.get("dist_func", "cosine_dist"))
         self.summary_score[obj_id] = summary_score
 
-
-
         # Check if query sample should be updated
         replace_ind = -1
         replace_prev_query = False
@@ -547,17 +545,24 @@ class BL_DiMP(BaseTracker):
             self.query_pred_bb[obj_id] = torch.cat((self.pos[[1, 0]] - (self.target_sz[[1, 0]] - 1) / 2, self.target_sz[[1, 0]]))
 
         # Initiate querying if it's time
-        if self.frames_since_last_query[obj_id] > self.params.get("num_frames_between_queries", 10) and self.query_sample[obj_id] is not None:
-            replace_ind, summary_score, _, _, _ = kc.get_k_online_summary_update_index(summary_samples,
-                                                                                       self.query_sample[obj_id],
-                                                                                       self.num_init_samples[obj_id],
-                                                                                       threshold=self.extremum_summary_threshold[obj_id],
-                                                                                       dist_func=self.params.get(
-                                                                                           "dist_func",
-                                                                                           "cosine_dist"),
-                                                                                       fill_first=self.params.get(
-                                                                                           "fill_summary_first",
-                                                                                           False))
+        initiate_query = self.frames_since_last_query[obj_id] > self.params.get("num_frames_between_queries", 10) and \
+                         self.query_sample[obj_id] is not None
+        summary_replacement_policy = self.params.get("summary_replacement_policy", "extremum")
+        if initiate_query:
+            if summary_replacement_policy == "extremum":
+                replace_ind, summary_score, _, _, _ = kc.get_k_online_summary_update_index(summary_samples,
+                                                                                           self.query_sample[obj_id],
+                                                                                           self.num_init_samples[obj_id],
+                                                                                           threshold=self.extremum_summary_threshold[obj_id],
+                                                                                           dist_func=self.params.get(
+                                                                                               "dist_func",
+                                                                                               "cosine_dist"),
+                                                                                           fill_first=self.params.get(
+                                                                                               "fill_summary_first",
+                                                                                               False))
+            elif summary_replacement_policy == "random":
+                replace_ind = torch.randint(self.num_init_samples[obj_id], (1,)).item()
+
             self.query_replace_ind[obj_id] = replace_ind
 
         # Handle the query and update the summary if need be

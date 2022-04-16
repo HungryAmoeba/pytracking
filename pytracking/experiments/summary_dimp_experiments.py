@@ -190,13 +190,14 @@ def replace_augs_fixed_rate_fish_test():
 
     return trackers, dataset
 
+def replace_augs_random_fish_test():
+    trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_rand_bl_60', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_rand_bl_30', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_rand_bl_1', range(5))
 
-def debug_fish_test():
-    trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_thresholded_bl_30', range(1))
     dataset = get_dataset('fish')
 
     return trackers, dataset
-
 
 def mh_fish_test():
     #trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
@@ -276,3 +277,9 @@ def vot_summary_size_test():
     dataset = get_dataset('vot_2020', 'vot')
 
     return trackers, dataset 
+
+def debug_fish_test():
+    trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_rand_bl_30', range(1))
+    dataset = get_dataset('fish')
+
+    return trackers, dataset

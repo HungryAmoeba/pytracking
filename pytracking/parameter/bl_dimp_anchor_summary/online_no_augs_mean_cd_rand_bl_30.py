@@ -13,7 +13,7 @@ def parameters():
 
     # Bandwidth params
     params.use_limited_bandwidth = True
-    params.num_frames_between_queries = 1
+    params.num_frames_between_queries = 30
 
     # Interactivity params
     params.use_interaction = True
@@ -35,8 +35,8 @@ def parameters():
     # Extremum summary params
     params.use_summary = True
     params.summary_size = 15 # Currently useless, set by number of initial samples
-    params.log_summary = True # this is only for data saving at the moment
-    params.summary_replacement_policy = "extremum" # "extremum", "random"
+    params.log_summary = False # this is only for data saving at the moment
+    params.summary_replacement_policy = "random" # "extremum", "random"
     params.threshold_update_policy = "mean_score" # "mean_score", "constant"
     params.fill_summary_first = True
     params.summary_threshold_update_constant = 1
