@@ -11,6 +11,7 @@ from pytracking.features import augmentation
 import ltr.data.bounding_box_utils as bbutils
 from ltr.models.target_classifier.initializer import FilterInitializerZero
 from ltr.models.layers import activation
+import torchvision.models as models
 
 from pytracking.analysis.extract_results import calc_err_center, calc_iou_overlap
 import cv2 as cv
@@ -95,6 +96,9 @@ class BL_DiMP(BaseTracker):
         # Initialize IoUNet
         if self.params.get('use_iou_net', True):
             self.init_iou_net(init_backbone_feat)
+
+        # Initialize contrastive backbone
+        #alexnet = models.alexnet(pretrained=True)
 
         # Initialize extremum summary
         if self.params.get('use_summary', False):
@@ -822,7 +826,7 @@ class BL_DiMP(BaseTracker):
             num_iter = self.params.get('net_opt_low_iter', None)
         elif (self.frame_num - 1) % self.params.train_skipping == 0:
             num_iter = self.params.get('net_opt_update_iter', None)
-        elif self.params.get("use_summary") and self.summary_updated:
+        elif self.params.get("use_summary_update", False) and self.summary_updated:
             num_iter = self.params.get('net_opt_update_iter', None)
 
         plot_loss = self.params.debug > 0
