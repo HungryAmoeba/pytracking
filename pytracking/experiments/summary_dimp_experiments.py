@@ -288,7 +288,21 @@ def vot_summary_size_test():
 
     dataset = get_dataset('vot_2020', 'vot')
 
-    return trackers, dataset 
+    return trackers, dataset
+
+def pysot_fish_test():
+    trackers = trackerlist('pysot', 'siammask', range(5)) + \
+               trackerlist('pysot', 'dasiamrpn', range(5)) + \
+               trackerlist('pysot', 'siamrpnpp', range(5))
+    dataset = get_dataset('fish')
+
+def fish_test():
+    trackers = trackerlist('keep_track', 'default', range(5)) + \
+               trackerlist('dimp_original', 'super_dimp', range(5)) + \
+               trackerlist('atom', 'default', range(5))
+    dataset = get_dataset('fish')
+
+    return trackers, dataset
 
 def debug_fish_test():
     #trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_rand_bl_30', range(1))
