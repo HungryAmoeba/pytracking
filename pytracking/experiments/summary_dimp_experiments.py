@@ -199,6 +199,18 @@ def replace_augs_random_fish_test():
 
     return trackers, dataset
 
+def replace_augs_gamma_thr_fish_test():
+    trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_11_cd_thresholded_bl_30', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_101_cd_thresholded_bl_30', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_1001_cd_thresholded_bl_30', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_11_cd_thresholded_bl_60', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_101_cd_thresholded_bl_60', range(5)) + \
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_1001_cd_thresholded_bl_60', range(5))
+
+    dataset = get_dataset('fish')
+
+    return trackers, dataset
+
 def mh_fish_test():
     #trackers = trackerlist('dimp_original', 'super_dimp_online_only_10', range(1))
     trackers = trackerlist('bl_dimp_anchor_summary', 'online_mean_cd_thresholded_bl_1', range(1))
@@ -279,7 +291,8 @@ def vot_summary_size_test():
     return trackers, dataset 
 
 def debug_fish_test():
-    trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_rand_bl_30', range(1))
+    #trackers = trackerlist('bl_dimp_anchor_summary', 'online_no_augs_mean_cd_rand_bl_30', range(1))
+    trackers = trackerlist('pysot', 'siammask', range(1))
     dataset = get_dataset('fish')
 
     return trackers, dataset
