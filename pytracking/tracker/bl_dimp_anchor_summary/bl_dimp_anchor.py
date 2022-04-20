@@ -610,11 +610,12 @@ class BL_DiMP(BaseTracker):
 
             # Update the threshold
             if self.params.get("use_summary", False):
-                if self.params.get("threshold_update_policy", "mean_score") == "mean_score":
+                threshold_update_policy = self.params.get("threshold_update_policy", "mean_score")
+                if threshold_update_policy == "mean_score":
                     self.extremum_summary_threshold[obj_id], _ = kc.get_mean_summary_score(self.training_samples[obj_id][:self.num_init_samples[obj_id], ...],
                         dist_func=self.params.get("dist_func","cosine_dist"))
-                else:
-                    self.extremum_summary_threshold[obj_id] *= self.params.get("summary_threshold_gamma", 1.005)
+                elif threshold_update_policy == "constant":
+                    self.extremum_summary_threshold[obj_id] *= self.params.get("summary_threshold_update_constant", 1.005)
 
     def update_summary(self, replace_ind, sample, target_box, im_patch, weight):
         obj_id = 0

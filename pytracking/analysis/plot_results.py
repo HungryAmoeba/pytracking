@@ -6,7 +6,7 @@ import torch
 import pickle
 import json
 from pytracking.evaluation.environment import env_settings
-from pytracking.analysis.extract_results import extract_results, get_summary_stats, get_individual_seq_summary_stats
+from pytracking.analysis.extract_results import extract_results, get_summary_stats, get_individual_seq_summary_stats, extract_summary_results
 import numpy as np
 
 def get_plot_draw_styles():
@@ -40,6 +40,39 @@ def check_eval_data_is_valid(eval_data, trackers, dataset):
 
     return seq_names == seq_names_saved and tracker_names_f == tracker_names_f_saved
 
+def merge_multiple_summary_runs(eval_summary_data):
+    new_tracker_names = []
+    avg_query_rate_all_merged = []
+    avg_summary_size_all_merged = []
+
+    trackers = eval_summary_data['trackers']
+    merged = torch.zeros(len(trackers), dtype=torch.uint8)
+
+    avg_query_rate_all = torch.tensor(eval_summary_data['avg_query_rate_all'])
+    avg_summary_size_all = torch.tensor(eval_summary_data['avg_summary_size_all'])
+
+    for i in range(len(trackers)):
+        if merged[i]:
+            continue
+        base_tracker = trackers[i]
+        new_tracker_names.append(base_tracker)
+
+        match = [t['name'] == base_tracker['name'] and t['param'] == base_tracker['param'] for t in trackers]
+        match = torch.tensor(match)
+        avg_query_rate_all_merged.append(avg_query_rate_all[:, match].mean(1))
+        avg_summary_size_all_merged.append(avg_summary_size_all[:, match].mean(1))
+
+        merged[match] = 1
+
+    # todo: why is this stacking needed
+    avg_query_rate_all_merged = torch.stack(avg_query_rate_all_merged, dim=1)
+    avg_summary_size_all_merged = torch.stack(avg_summary_size_all_merged, dim=1)
+
+    eval_summary_data['trackers'] = new_tracker_names
+    eval_summary_data['avg_query_rate_all'] = avg_query_rate_all_merged.tolist()
+    eval_summary_data['avg_summary_size_all'] = avg_summary_size_all_merged.tolist()
+
+    return eval_summary_data
 
 def merge_multiple_runs(eval_data):
     new_tracker_names = []
@@ -189,7 +222,6 @@ def get_auc_curve(ave_success_rate_plot_overlap, valid_sequence):
 
     return auc_curve, auc
 
-
 def get_prec_curve(ave_success_rate_plot_center, valid_sequence):
     ave_success_rate_plot_center = ave_success_rate_plot_center[valid_sequence, :, :]
     prec_curve = ave_success_rate_plot_center.mean(0) * 100.0
@@ -198,7 +230,7 @@ def get_prec_curve(ave_success_rate_plot_center, valid_sequence):
     return prec_curve, prec_score
 
 def plot_per_sequence_summary_results(trackers, dataset, report_name, merge_results=False, plot_types=('queries'),
-                                      force_evaluation=False, selected_sequences=None, **kwargs):
+                                      force_evaluation=False, selected_sequences=None, disp_time_fps=None, **kwargs):
     """
     Plot results for the given trackers
 
@@ -250,7 +282,13 @@ def plot_per_sequence_summary_results(trackers, dataset, report_name, merge_resu
                 num_frames = len(sizes)
 
                 xaxis = np.arange(num_frames)
-                ax_summary.vlines(x=np.where(queries), ymin=0, ymax=np.maximum(np.max(scores), 1), colors="red", alpha=0.1)
+                x_where = np.where(queries)[0]
+
+                if disp_time_fps is not None:
+                    xaxis = xaxis/disp_time_fps
+                    x_where = x_where / disp_time_fps
+
+                ax_summary.vlines(x=x_where, ymin=0, ymax=np.maximum(np.max(scores), 1), colors="red", alpha=0.1)
 
                 if 'summary_thresholds' in plot_types:
                     thresholds = summary_thresholds[seq_data_key].numpy()
@@ -263,14 +301,18 @@ def plot_per_sequence_summary_results(trackers, dataset, report_name, merge_resu
                     ax_summary.plot(xaxis, sizes, 'yellow')
 
                 ax_summary.set_title(tracker_name + ": " + seq_name)
-                ax_summary.set_xlabel("Frame number")
+                if not disp_time_fps is None:
+                    ax_summary.set_xlabel("Time (s)")
+                else:
+                    ax_summary.set_xlabel("Frame number")
+
                 ax_summary.set_ylabel("Summary score")
                 plt.show()
 
     plt.show()
 
 def plot_results(trackers, dataset, report_name, merge_results=False,
-                 plot_types=('success'), force_evaluation=False, **kwargs):
+                 plot_types=('success'), disp_time_fps=30.0, force_evaluation=False, return_fig_handles=False, **kwargs):
     """
     Plot results for the given trackers
 
@@ -345,76 +387,48 @@ def plot_results(trackers, dataset, report_name, merge_results=False,
 
     # ********************************  Summary Size Plot **************************************
     if 'summary_size' in plot_types:
-        summary_sizes, _, _ = get_summary_stats(trackers, dataset, report_name)
-        fig_summary, ax_summary = plt.subplots()
-        for summary_list in summary_sizes:
-            len_list = len(summary_list)
-            xaxis = np.arange(0, len_list)
-            yaxis = np.array(summary_list)
-            ax_summary.plot(xaxis, yaxis, c = 'b')
-        ax_summary.set_xlabel("Frame number")
-        ax_summary.set_ylabel("Summary size")
+        # summary_sizes, _, _ = get_summary_stats(trackers, dataset, report_name)
+        # fig_summary, ax_summary = plt.subplots()
+        # for summary_list in summary_sizes:
+        #     len_list = len(summary_list)
+        #     xaxis = np.arange(0, len_list)
+        #     yaxis = np.array(summary_list)
+        #     ax_summary.plot(xaxis, yaxis, c = 'b')
+        # ax_summary.set_xlabel("Frame number")
+        # ax_summary.set_ylabel("Summary size")
+        pass
 
     # ********************************  Summary Size Plot **************************************
-    if 'summary_thresholds' in plot_types:
-        _, summary_thresholds, _, _ = get_summary_stats(trackers, dataset, report_name)
-        fig_summary, ax_summary = plt.subplots()
-        for summary_list in summary_thresholds:
-            len_list = len(summary_list)
-            xaxis = np.arange(0, len_list)
-            yaxis = np.array(summary_list)
-            ax_summary.plot(xaxis, yaxis, c = 'b')
-            #print(yaxis)
-        ax_summary.set_xlabel("Frame number")
-        ax_summary.set_ylabel("Summary thresholds")
+    if 'summary_queries' in plot_types:
+        ave_success_rate_plot_overlap = torch.tensor(eval_data['ave_success_rate_plot_overlap'])
 
-    # ********************************  Summary Size Plot **************************************
-    if 'queries' in plot_types:
-        _, summary_thresholds, queries, summary_scores = get_summary_stats(trackers, dataset, report_name)
-        fig_summary, ax_summary = plt.subplots()
-        i = 0
-        for summary_list, query, scores in zip(summary_thresholds, queries, summary_scores):
-            query = query.numpy()
-            scores = scores.numpy()
-            if len(query) < 4500:
-                continue
-            if i >= 1:
-                continue
-            i += 1
-            len_list = len(summary_list)
-            xaxis = np.arange(0, len_list)
-            yaxis = np.array(summary_list)
-            ax_summary.vlines(x=np.where(query), ymin=0, ymax=np.max(scores), colors="red", alpha=0.1)
-            print(np.sum(query)/len(query))
-            #print(yaxis)
-        i = 0
-        for summary_list, query in zip(summary_thresholds, queries):
-            query = query.numpy()
-            if len(query) < 4500:
-                continue
-            if i >= 1:
-                continue
-            i += 1
-            len_list = len(summary_list)
-            xaxis = np.arange(0, len_list)
-            yaxis = np.array(summary_list)
-            ax_summary.plot(xaxis, yaxis, c = 'b')
-        i = 0
-        for summary_list, query, scores in zip(summary_thresholds, queries, summary_scores):
-            query = query.numpy()
-            if len(query) < 4500:
-                continue
-            if i >= 1:
-                continue
-            i += 1
-            len_list = len(summary_list)
-            xaxis = np.arange(0, len_list)
-            yaxis = np.array(scores)
-            ax_summary.plot(xaxis, yaxis, c = 'g')
-        ax_summary.set_xlabel("Frame number")
-        ax_summary.set_ylabel("Summary thresholds")
+        # Index out valid sequences
+        auc_curve, auc = get_auc_curve(ave_success_rate_plot_overlap, valid_sequence)
+        threshold_set_overlap = torch.tensor(eval_data['threshold_set_overlap'])
 
-    plt.show()
+        eval_summary_data = extract_summary_results(trackers, dataset, report_name)
+
+        #todo: handle merging the summary results
+        if merge_results:
+            eval_summary_data = merge_multiple_summary_runs(eval_summary_data)
+
+        fig_summary, ax_summary = plt.subplots()
+
+        query_avgs = torch.tensor(eval_summary_data['avg_query_rate_all']).mean(0) * disp_time_fps
+
+        ax_summary.scatter(query_avgs, auc, color="red")
+        for i, tracker_name in enumerate(tracker_names):
+            ax_summary.text(query_avgs[i], auc[i], tracker_name['disp_name'])
+
+        ax_summary.set_xlabel("Query rate (queries/sec)")
+        #ax_summary.set_xscale('log')
+        ax_summary.set_ylabel("Success rate")
+
+
+    if return_fig_handles:
+        return (plt, fig_summary, ax_summary)
+    else:
+        plt.show()
 
 
 def generate_formatted_report(row_labels, scores, table_name=''):
