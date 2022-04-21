@@ -321,7 +321,7 @@ def replace_anc_gamma_large_fish_test():
                trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_101_cd_thresholded_bl_45', range(10)) + \
                trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_1001_cd_thresholded_bl_45', range(10)) + \
                trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_101_cd_thresholded_bl_60', range(10)) + \
-               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_1001_cd_thresholded_bl_60', range(10)) +\
+               trackerlist('bl_dimp_anchor_summary', 'online_no_augs_const_1001_cd_thresholded_bl_60', range(10))
 
     dataset = get_dataset('fish')
     return trackers, dataset
